@@ -220,8 +220,5 @@ sysctl --system
 echo "应用 sysctl 参数2..."
 sudo sysctl -p
 
-
-echo "30秒后自动重启"
-sleep 30
-reboot
+#reboot
 
