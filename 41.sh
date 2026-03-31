@@ -12,9 +12,6 @@ if [ "$(id -u)" != "0" ]; then
     exit 1
 fi
 
-DATE=$(date +"%Y%m%d_%H%M%S")
-
-BACKUP_DIR="/etc/sysctl_backup_$DATE"
 CONF_FILE="/etc/sysctl.d/99-network-optimized.conf"
 
 echo "======================================="
