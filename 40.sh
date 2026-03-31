@@ -21,15 +21,6 @@ echo "======================================="
 echo "开始网络优化"
 echo "======================================="
 
-echo "创建备份目录: $BACKUP_DIR"
-mkdir -p $BACKUP_DIR
-
-echo "备份当前 sysctl 配置..."
-cp /etc/sysctl.conf $BACKUP_DIR/ 2>/dev/null || true
-cp -r /etc/sysctl.d $BACKUP_DIR/ 2>/dev/null || true
-
-echo "备份完成"
-
 echo "清空1"
 sudo truncate -s 0 /etc/sysctl.conf
 echo "清空2"
@@ -221,24 +212,4 @@ sysctl --system
 echo "应用 sysctl 参数2..."
 sudo sysctl -p
 
-echo ""
-echo "======================================="
-echo "优化完成"
-echo "======================================="
-
-echo ""
-echo "当前 TCP 拥塞算法:"
-sysctl net.ipv4.tcp_congestion_control
-
-echo ""
-echo "恢复方法:"
-echo "---------------------------------------"
-echo "rm -f $CONF_FILE"
-echo "cp $BACKUP_DIR/sysctl.conf /etc/sysctl.conf"
-echo "cp -r $BACKUP_DIR/sysctl.d /etc/"
-echo "sysctl --system"
-echo "---------------------------------------"
-
-echo ""
-echo "备份位置:"
-echo "$BACKUP_DIR"
+reboot
