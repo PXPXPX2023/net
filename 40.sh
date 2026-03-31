@@ -35,6 +35,7 @@ sudo truncate -s 0 /etc/sysctl.d/99-pro77.conf
 sudo truncate -s 0 /etc/sysctl.d/99-pro831.conf
 sudo truncate -s 0 /usr/lib/sysctl.d/99-protect-links.conf
 sudo truncate -s 0 /etc/sysctl.d/99-xanmod-bbr3.conf
+sudo truncate -s 0 /etc/sysctl.d/99-network-optimized.con
 
 
 echo "写入优化配置..."
