@@ -12,8 +12,6 @@ if [ "$(id -u)" != "0" ]; then
     exit 1
 fi
 
-CONF_FILE="/etc/sysctl.d/99-network-optimized.conf"
-
 echo "======================================="
 echo "开始网络优化"
 echo "======================================="
@@ -41,6 +39,7 @@ sudo truncate -s 0 /etc/sysctl.d/99-xanmod-bbr3.conf
 sudo truncate -s 0 /usr/lib/sysctl.d/50-pid-max.conf
 sudo truncate -s 0 /usr/lib/sysctl.d/99-protect-links.conf
 
+CONF_FILE="/etc/sysctl.d/99-network-optimized.conf"
 
 
 echo "写入优化配置..."
