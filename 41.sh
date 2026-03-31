@@ -23,6 +23,8 @@ echo "======================================="
 
 echo "清空1"
 sudo truncate -s 0 /etc/sysctl.conf
+sudo truncate -s 0 /etc/sysctl.d/99-sysctl.conf
+
 echo "清空2"
 sudo truncate -s 0 /etc/sysctl.d/99-bbr.conf
 sudo truncate -s 0 /etc/sysctl.d/99-bbr3.conf
@@ -38,7 +40,6 @@ sudo truncate -s 0 /etc/sysctl.d/99-pro831.conf
 sudo truncate -s 0 /etc/sysctl.d/99-pro838.conf
 sudo truncate -s 0 /etc/sysctl.d/99-pro850.conf
 sudo truncate -s 0 /etc/sysctl.d/99-pro860.conf
-sudo truncate -s 0 /etc/sysctl.d/99-sysctl.conf
 sudo truncate -s 0 /etc/sysctl.d/99-xanmod-bbr3.conf
 sudo truncate -s 0 /usr/lib/sysctl.d/50-pid-max.conf
 sudo truncate -s 0 /usr/lib/sysctl.d/99-protect-links.conf
