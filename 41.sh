@@ -19,25 +19,27 @@ echo "======================================="
 echo "清空1"
 sudo truncate -s 0 /etc/sysctl.conf
 sudo truncate -s 0 /etc/sysctl.d/99-sysctl.conf
+sudo truncate -s 0 /etc/sysctl.d/99-network-optimized.conf
 
 echo "清空2"
-sudo truncate -s 0 /etc/sysctl.d/99-bbr.conf
-sudo truncate -s 0 /etc/sysctl.d/99-bbr3.conf
-sudo truncate -s 0 /etc/sysctl.d/99-bbr3-ultra.conf
-sudo truncate -s 0 /etc/sysctl.d/99-bbrpro.conf
-sudo truncate -s 0 /etc/sysctl.d/99-bbrv3.conf
-sudo truncate -s 0 /etc/sysctl.d/99-ipv6-disable.conf
-sudo truncate -s 0 /etc/sysctl.d/99-network-optimized.conf
-sudo truncate -s 0 /etc/sysctl.d/99-pro66.conf
-sudo truncate -s 0 /etc/sysctl.d/99-pro70.conf
-sudo truncate -s 0 /etc/sysctl.d/99-pro77.conf
-sudo truncate -s 0 /etc/sysctl.d/99-pro831.conf
-sudo truncate -s 0 /etc/sysctl.d/99-pro838.conf
-sudo truncate -s 0 /etc/sysctl.d/99-pro850.conf
-sudo truncate -s 0 /etc/sysctl.d/99-pro860.conf
-sudo truncate -s 0 /etc/sysctl.d/99-xanmod-bbr3.conf
-sudo truncate -s 0 /usr/lib/sysctl.d/50-pid-max.conf
-sudo truncate -s 0 /usr/lib/sysctl.d/99-protect-links.conf
+sudo rm -f /etc/sysctl.d/99-bbr.conf
+sudo rm -f /etc/sysctl.d/99-bbr3.conf
+sudo rm -f /etc/sysctl.d/99-bbr3-ultra.conf
+sudo rm -f /etc/sysctl.d/99-bbrpro.conf
+sudo rm -f /etc/sysctl.d/99-bbrv3.conf
+sudo rm -f /etc/sysctl.d/99-ipv6-disable.conf
+sudo rm -f /etc/sysctl.d/99-network-optimized.conf
+sudo rm -f /etc/sysctl.d/99-pro66.conf
+sudo rm -f /etc/sysctl.d/99-pro70.conf
+sudo rm -f /etc/sysctl.d/99-pro77.conf
+sudo rm -f /etc/sysctl.d/99-pro831.conf
+sudo rm -f /etc/sysctl.d/99-pro838.conf
+sudo rm -f /etc/sysctl.d/99-pro850.conf
+sudo rm -f /etc/sysctl.d/99-pro860.conf
+sudo rm -f /etc/sysctl.d/99-xanmod-bbr3.conf
+sudo rm -f /usr/lib/sysctl.d/50-pid-max.conf
+sudo rm -f /usr/lib/sysctl.d/99-protect-links.conf
+
 
 CONF_FILE="/etc/sysctl.d/99-network-optimized.conf"
 
@@ -62,17 +64,18 @@ net.ipv4.tcp_rfc1337 = 1
 net.ipv4.tcp_sack = 1
 net.ipv4.tcp_fack = 1
 net.ipv4.tcp_window_scaling = 1
-net.ipv4.tcp_adv_win_scale = 2
+#窗口
+net.ipv4.tcp_adv_win_scale = 1
 net.ipv4.tcp_moderate_rcvbuf = 1
-net.core.rmem_default = 35536
-net.core.wmem_default = 16383
-net.core.rmem_max = 15108858
-net.core.wmem_max = 15108858
+net.core.rmem_default = 212992
+net.core.wmem_default = 212992
+net.core.rmem_max = 21108858
+net.core.wmem_max = 21108858
 net.core.netdev_budget = 600
 net.ipv4.fib_sync_mem = 6666354
 net.ipv4.igmp_max_memberships = 200
-net.ipv4.tcp_rmem = 4096 35536 15108858
-net.ipv4.tcp_wmem = 4096 16383 15108858
+net.ipv4.tcp_rmem = 4096 212992 21108858
+net.ipv4.tcp_wmem = 4096 212992 21108858
 net.ipv4.udp_rmem_min = 8192
 net.ipv4.udp_wmem_min = 8192
 net.ipv4.route.flush = 1
@@ -105,7 +108,7 @@ net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_reordering = 3
 
 net.ipv4.tcp_autocorking = 1
-net.ipv4.tcp_tso_win_divisor = 12
+net.ipv4.tcp_tso_win_divisor = 32
 kernel.pid_max = 4194304
 kernel.threads-max = 75536
 net.ipv4.neigh.default.gc_thresh1 = 1024
@@ -116,7 +119,7 @@ net.ipv4.conf.default.arp_announce = 2
 net.ipv4.conf.lo.arp_announce = 2
 net.ipv4.conf.all.arp_announce = 2
 net.unix.max_dgram_qlen = 130000
-net.ipv4.tcp_notsent_lowat = 51215
+net.ipv4.tcp_notsent_lowat = 32768
 vm.min_free_kbytes = 65535
 net.ipv4.route.max_size = 655350
 vm.vfs_cache_pressure = 2
@@ -144,8 +147,8 @@ fs.aio-max-nr = 262144
 kernel.msgmax = 655350
 kernel.msgmnb = 655350
 net.ipv4.neigh.default.proxy_qlen = 50000
-net.ipv4.tcp_pacing_ca_ratio = 10
-net.ipv4.tcp_pacing_ss_ratio = 10
+net.ipv4.tcp_pacing_ca_ratio = 120
+net.ipv4.tcp_pacing_ss_ratio = 200
 fs.protected_fifos = 1
 fs.protected_hardlinks = 1
 fs.protected_regular = 2
@@ -187,8 +190,8 @@ net.core.tstamp_allow_data = 1
 net.core.netdev_tstamp_prequeue = 1
 kernel.randomize_va_space = 2
 
-net.ipv4.tcp_mem = 131072 262144 524288
-net.ipv4.udp_mem = 131072 262144 524288
+net.ipv4.tcp_mem = 65536 131072 262144
+net.ipv4.udp_mem = 32768 65536 131072
 
 net.ipv4.tcp_recovery = 0x1
 #net.ipv4.tcp_app_win = 31
