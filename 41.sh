@@ -220,5 +220,5 @@ sysctl --system
 echo "应用 sysctl 参数2..."
 sudo sysctl -p
 
-#reboot
+reboot
 
