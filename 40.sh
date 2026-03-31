@@ -30,6 +30,11 @@ cp -r /etc/sysctl.d $BACKUP_DIR/ 2>/dev/null || true
 
 echo "备份完成"
 
+echo "清空1"
+sudo truncate -s 0 /etc/sysctl.conf
+echo "清空2"
+sudo truncate -s 0 /etc/sysctl.d/99-sysctl.conf
+
 echo "写入优化配置..."
 
 cat > $CONF_FILE << 'EOF'
