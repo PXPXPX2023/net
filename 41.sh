@@ -58,29 +58,23 @@ net.ipv4.tcp_no_metrics_save = 1
 net.ipv4.tcp_ecn = 1
 net.ipv4.tcp_ecn_fallback = 1
 
-#net.ipv4.tcp_frto = 2
-#net.ipv4.tcp_low_latency = 1
-
 net.ipv4.tcp_mtu_probing = 1
 net.ipv4.tcp_rfc1337 = 1
 net.ipv4.tcp_sack = 1
-
-#net.ipv4.tcp_fack = 1
 
 net.ipv4.tcp_window_scaling = 1
 #窗口
 net.ipv4.tcp_adv_win_scale = 1
 net.ipv4.tcp_moderate_rcvbuf = 1
-net.core.rmem_default = 6260997
-net.core.wmem_default = 6260997
+net.core.rmem_default = 7260997
+net.core.wmem_default = 7260997
 net.core.rmem_max = 96108858
 net.core.wmem_max = 96108858
 net.core.netdev_budget = 600
 
-#net.ipv4.fib_sync_mem = 6666354
 net.ipv4.igmp_max_memberships = 200
-net.ipv4.tcp_rmem = 4096 6260997 96108858
-net.ipv4.tcp_wmem = 4096 6260997 96108858
+net.ipv4.tcp_rmem = 4096 7260997 96108858
+net.ipv4.tcp_wmem = 4096 7260997 96108858
 net.ipv4.udp_rmem_min = 8192
 net.ipv4.udp_wmem_min = 8192
 net.ipv4.route.flush = 1
@@ -100,8 +94,6 @@ net.ipv4.ip_local_port_range = 1024 65535
 net.ipv4.tcp_max_syn_backlog = 65535
 net.ipv4.tcp_max_tw_buckets = 262144
 
-#net.ipv4.route.gc_timeout = 1350
-
 net.ipv4.tcp_retries1 = 5
 net.ipv4.tcp_retries2 = 8
 net.ipv4.tcp_syn_retries = 3
@@ -115,7 +107,7 @@ net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_reordering = 3
 
 net.ipv4.tcp_autocorking = 1
-net.ipv4.tcp_tso_win_divisor = 80
+net.ipv4.tcp_tso_win_divisor = 72
 kernel.pid_max = 4194304
 kernel.threads-max = 75536
 net.ipv4.neigh.default.gc_thresh1 = 1024
@@ -128,9 +120,6 @@ net.ipv4.conf.all.arp_announce = 2
 net.unix.max_dgram_qlen = 130000
 net.ipv4.tcp_notsent_lowat = 40005
 
-#vm.min_free_kbytes = 65535
-
-#net.ipv4.route.max_size = 655350
 vm.vfs_cache_pressure = 10
 net.ipv4.conf.all.send_redirects = 0
 net.ipv4.conf.all.accept_redirects = 0
@@ -144,7 +133,6 @@ net.ipv4.tcp_orphan_retries = 8
 net.core.busy_poll = 0
 net.core.busy_read = 0
 net.ipv4.conf.all.forwarding = 1
-#net.ipv4.conf.default.forwarding = 1
 
 net.ipv4.ipfrag_max_dist = 72
 net.ipv4.ipfrag_secret_interval = 20
@@ -163,16 +151,8 @@ fs.protected_hardlinks = 1
 fs.protected_regular = 2
 fs.protected_symlinks = 1
 
-#1c 1, 2c 3, 4c f, 8c ff，自动为ffff
-#net.core.rps_default_mask = 1
-
 net.core.rps_sock_flow_entries = 65535
 net.core.flow_limit_table_len = 131072
-
-#CIPSO 是 军事安全标签网络，无意义
-#net.ipv4.cipso_cache_enable = 1
-#net.ipv4.cipso_cache_bucket_size = 37000
-#net.ipv4.cipso_rbm_optfmt = 1
 
 net.ipv4.tcp_workaround_signed_windows = 1
 vm.dirty_ratio = 35
@@ -187,8 +167,8 @@ net.ipv4.tcp_child_ehash_entries = 65535
 net.ipv4.ip_no_pmtu_disc = 0
 net.ipv4.tcp_stdurg = 0
 net.ipv4.tcp_challenge_ack_limit = 1200
-net.ipv4.tcp_comp_sack_delay_ns = 700000
-net.ipv4.tcp_comp_sack_nr = 2
+net.ipv4.tcp_comp_sack_delay_ns = 200000
+net.ipv4.tcp_comp_sack_nr = 5
 net.ipv4.tcp_fwmark_accept = 1
 net.ipv4.tcp_invalid_ratelimit = 800
 net.ipv4.tcp_l3mdev_accept = 1
@@ -203,8 +183,7 @@ net.ipv4.tcp_mem = 65536 131072 262144
 net.ipv4.udp_mem = 32768 65536 131072
 
 net.ipv4.tcp_recovery = 0x1
-#net.ipv4.tcp_app_win = 31
-#net.ipv4.tcp_plb_enabled = 1
+
 net.ipv4.tcp_dsack = 1
 kernel.shmmax = 67108864
 kernel.shmall = 16777216
@@ -219,14 +198,30 @@ net.ipv4.tcp_thin_linear_timeouts = 0
 net.ipv4.tcp_early_demux = 1
 net.ipv4.tcp_shrink_window = 0
 
-#net.ipv4.route.gc_min_interval_ms = 700
-
 net.ipv4.neigh.default.unres_qlen_bytes = 65535
 
+
+#net.ipv4.tcp_frto = 2
+#net.ipv4.tcp_low_latency = 1
+#net.ipv4.fib_sync_mem = 6666354
+#net.ipv4.tcp_fack = 1
+#net.ipv4.tcp_app_win = 31
 #net.ipv4.tcp_retrans_collapse = 3 #老旧废弃
+#net.ipv4.tcp_plb_enabled = 1
+#net.ipv4.conf.default.forwarding = 1
+#vm.min_free_kbytes = 65535
+#net.ipv4.route.max_size = 655350
+#net.ipv4.route.gc_timeout = 1350
+
+#1c 1, 2c 3, 4c f, 8c ff，自动为ffff
+#net.core.rps_default_mask = 1
+#CIPSO 是 军事安全标签网络，无意义
+#net.ipv4.cipso_cache_enable = 1
+#net.ipv4.cipso_cache_bucket_size = 37000
+#net.ipv4.cipso_rbm_optfmt = 1
+#net.ipv4.route.gc_min_interval_ms = 700
 
 EOF
-
 
 echo "应用 sysctl 参数..."
 sysctl --system
