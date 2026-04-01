@@ -119,7 +119,7 @@ net.ipv4.conf.default.arp_announce = 2
 net.ipv4.conf.lo.arp_announce = 2
 net.ipv4.conf.all.arp_announce = 2
 net.unix.max_dgram_qlen = 130000
-net.ipv4.tcp_notsent_lowat = 32768
+net.ipv4.tcp_notsent_lowat = 30005
 vm.min_free_kbytes = 65535
 net.ipv4.route.max_size = 655350
 vm.vfs_cache_pressure = 2
@@ -155,12 +155,12 @@ fs.protected_regular = 2
 fs.protected_symlinks = 1
 
 #1c 1, 2c 3, 4c f, 8c ff，自动为ffff
-
 #net.core.rps_default_mask = 1
+
 net.core.rps_sock_flow_entries = 65535
+net.core.flow_limit_table_len = 131072
 
 #CIPSO 是 军事安全标签网络，无意义
-#net.core.flow_limit_table_len = 65535
 #net.ipv4.cipso_cache_enable = 1
 #net.ipv4.cipso_cache_bucket_size = 37000
 #net.ipv4.cipso_rbm_optfmt = 1
