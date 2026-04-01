@@ -108,7 +108,7 @@ net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_reordering = 3
 
 net.ipv4.tcp_autocorking = 1
-net.ipv4.tcp_tso_win_divisor = 152
+net.ipv4.tcp_tso_win_divisor = 50
 kernel.pid_max = 4194304
 kernel.threads-max = 75536
 net.ipv4.neigh.default.gc_thresh1 = 1024
@@ -202,8 +202,8 @@ kernel.shmall = 16777216
 
 net.ipv4.icmp_echo_ignore_broadcasts = 1
 net.ipv4.icmp_ignore_bogus_error_responses = 1
-net.ipv4.tcp_limit_output_bytes = 131072
-net.ipv4.tcp_min_tso_segs = 4
+net.ipv4.tcp_limit_output_bytes = 1310720
+net.ipv4.tcp_min_tso_segs = 1
 net.ipv4.tcp_thin_linear_timeouts = 0
 net.ipv4.tcp_early_demux = 1
 net.ipv4.tcp_shrink_window = 0
