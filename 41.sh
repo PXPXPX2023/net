@@ -194,7 +194,7 @@ net.ipv4.icmp_ignore_bogus_error_responses = 1
 net.ipv4.tcp_limit_output_bytes = 655360
 net.ipv4.tcp_min_tso_segs = 1
 
-net.ipv4.tcp_thin_linear_timeouts = 0
+net.ipv4.tcp_thin_linear_timeouts = 1
 net.ipv4.tcp_early_demux = 1
 net.ipv4.tcp_shrink_window = 0
 
