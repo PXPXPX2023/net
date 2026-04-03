@@ -70,7 +70,7 @@ net.core.rmem_default = 5260997
 net.core.wmem_default = 5260997
 net.core.rmem_max = 92108858
 net.core.wmem_max = 92108858
-net.core.netdev_budget = 600
+net.core.netdev_budget = 2000
 
 net.ipv4.igmp_max_memberships = 200
 net.ipv4.tcp_rmem = 4096 5260997 92108858
@@ -118,7 +118,7 @@ net.ipv4.conf.default.arp_announce = 2
 net.ipv4.conf.lo.arp_announce = 2
 net.ipv4.conf.all.arp_announce = 2
 net.unix.max_dgram_qlen = 130000
-net.ipv4.tcp_notsent_lowat = 40005
+net.ipv4.tcp_notsent_lowat = 20005
 
 vm.vfs_cache_pressure = 10
 net.ipv4.conf.all.send_redirects = 0
@@ -167,8 +167,8 @@ net.ipv4.tcp_child_ehash_entries = 65535
 net.ipv4.ip_no_pmtu_disc = 0
 net.ipv4.tcp_stdurg = 0
 net.ipv4.tcp_challenge_ack_limit = 1200
-net.ipv4.tcp_comp_sack_delay_ns = 200000
-net.ipv4.tcp_comp_sack_nr = 2
+net.ipv4.tcp_comp_sack_delay_ns = 500000
+net.ipv4.tcp_comp_sack_nr = 8
 net.ipv4.tcp_fwmark_accept = 1
 net.ipv4.tcp_invalid_ratelimit = 800
 net.ipv4.tcp_l3mdev_accept = 1
@@ -191,7 +191,7 @@ kernel.shmall = 16777216
 net.ipv4.icmp_echo_ignore_broadcasts = 1
 net.ipv4.icmp_ignore_bogus_error_responses = 1
 
-net.ipv4.tcp_limit_output_bytes = 1310720
+net.ipv4.tcp_limit_output_bytes = 655360
 net.ipv4.tcp_min_tso_segs = 1
 
 net.ipv4.tcp_thin_linear_timeouts = 0
