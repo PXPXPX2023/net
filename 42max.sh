@@ -107,13 +107,13 @@ net.ipv4.tcp_adv_win_scale = 1
 net.ipv4.tcp_moderate_rcvbuf = 1
 net.core.rmem_default = 9260997
 net.core.wmem_default = 9260997
-net.core.rmem_max = 1921088510
-net.core.wmem_max = 1921088510
+net.core.rmem_max = 192108859
+net.core.wmem_max = 192108859
 net.core.netdev_budget = 600
 
 net.ipv4.igmp_max_memberships = 200
-net.ipv4.tcp_rmem = 4096 9260997 1921088510
-net.ipv4.tcp_wmem = 4096 9260997 1921088510
+net.ipv4.tcp_rmem = 4096 9260997 192108859
+net.ipv4.tcp_wmem = 4096 9260997 192108859
 net.ipv4.udp_rmem_min = 8192
 net.ipv4.udp_wmem_min = 8192
 net.ipv4.route.flush = 1
@@ -218,8 +218,8 @@ net.core.tstamp_allow_data = 1
 net.core.netdev_tstamp_prequeue = 1
 kernel.randomize_va_space = 2
 
-net.ipv4.tcp_mem = 131072 262144 524288
-net.ipv4.udp_mem = 131072 262144 524288
+net.ipv4.tcp_mem = 65536 131072 262144
+net.ipv4.udp_mem = 65536 131072 262144
 
 net.ipv4.tcp_recovery = 0x1
 
