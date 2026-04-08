@@ -105,10 +105,10 @@ net.core.wmem_default = 560576
 net.core.rmem_max = 21699928
 net.core.wmem_max = 21699928
 
-net.ipv4.tcp_rmem = 4096 560576 21699928
-net.ipv4.tcp_wmem = 4096 560576 21699928
-net.ipv4.udp_rmem_min = 4096
-net.ipv4.udp_wmem_min = 4096
+net.ipv4.tcp_rmem = 65536 560576 21699928
+net.ipv4.tcp_wmem = 65536 560576 21699928
+net.ipv4.udp_rmem_min = 8192
+net.ipv4.udp_wmem_min = 8192
 
 net.core.netdev_budget = 600
 net.ipv4.igmp_max_memberships = 200
