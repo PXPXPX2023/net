@@ -100,15 +100,15 @@ net.ipv4.tcp_window_scaling = 1
 #窗口
 net.ipv4.tcp_adv_win_scale = 2
 net.ipv4.tcp_moderate_rcvbuf = 1
-net.core.rmem_default = 760576
-net.core.wmem_default = 760576
-net.core.rmem_max = 22699928
-net.core.wmem_max = 22699928
+net.core.rmem_default = 560576
+net.core.wmem_default = 560576
+net.core.rmem_max = 21699928
+net.core.wmem_max = 21699928
 
-net.ipv4.tcp_rmem = 65536 760576 22699928
-net.ipv4.tcp_wmem = 65536 760576 22699928
-net.ipv4.udp_rmem_min = 13107
-net.ipv4.udp_wmem_min = 13107
+net.ipv4.tcp_rmem = 4096 760576 21699928
+net.ipv4.tcp_wmem = 4096 760576 21699928
+net.ipv4.udp_rmem_min = 4096
+net.ipv4.udp_wmem_min = 4096
 
 net.core.netdev_budget = 600
 net.ipv4.igmp_max_memberships = 200
@@ -180,15 +180,15 @@ fs.aio-max-nr = 262144
 kernel.msgmax = 655350
 kernel.msgmnb = 655350
 net.ipv4.neigh.default.proxy_qlen = 50000
-net.ipv4.tcp_pacing_ca_ratio = 120
-net.ipv4.tcp_pacing_ss_ratio = 200
+net.ipv4.tcp_pacing_ca_ratio = 150
+net.ipv4.tcp_pacing_ss_ratio = 210
 fs.protected_fifos = 1
 fs.protected_hardlinks = 1
 fs.protected_regular = 2
 fs.protected_symlinks = 1
 
 net.core.rps_sock_flow_entries = 131072
-net.core.flow_limit_table_len = 262144
+net.core.flow_limit_table_len = 131072
 
 net.ipv4.tcp_workaround_signed_windows = 1
 vm.dirty_ratio = 35
