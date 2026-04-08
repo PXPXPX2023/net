@@ -175,10 +175,10 @@ net.core.busy_poll = 0
 net.core.busy_read = 0
 net.ipv4.conf.all.forwarding = 1
 
-net.ipv4.ipfrag_max_dist = 72
-net.ipv4.ipfrag_secret_interval = 20
-net.ipv4.ipfrag_low_thresh = 67108864
-net.ipv4.ipfrag_high_thresh = 134217728
+net.ipv4.ipfrag_max_dist = 32
+net.ipv4.ipfrag_secret_interval = 200
+net.ipv4.ipfrag_low_thresh = 42008868
+net.ipv4.ipfrag_high_thresh = 104917729
 net.ipv4.ipfrag_time = 30
 
 fs.aio-max-nr = 262144
