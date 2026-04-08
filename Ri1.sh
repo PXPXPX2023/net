@@ -81,6 +81,7 @@ echo "DefaultLimitNPROC=1000000" >> /etc/systemd/system.conf
 
 
 CONF_FILE="/etc/sysctl.d/99-network-optimized.conf"
+echo "写入优化配置..."
 cat > $CONF_FILE << 'EOF'
 kernel.pid_max = 131072
 kernel.panic = 1
