@@ -40,7 +40,6 @@ sudo rm -f /etc/sysctl.d/99-xanmod-bbr3.conf
 sudo rm -f /usr/lib/sysctl.d/50-pid-max.conf
 sudo rm -f /usr/lib/sysctl.d/99-protect-links.conf
 
-
 sudo rm -f /etc/security/limits.conf
 
 CONF_FILE="/etc/security/limits.conf"
@@ -64,12 +63,10 @@ root     hard   stack     1000000
 *     soft   stack    1000000
 *     hard   stack    1000000
 
-
 nginx soft nofile 1000000
 nginx hard nofile 1000000
 
 EOF
-
 
 echo "session required pam_limits.so" >> /etc/pam.d/common-session
 
@@ -79,9 +76,7 @@ echo "DefaultLimitNOFILE=1000000" >> /etc/systemd/system.conf
 
 echo "DefaultLimitNPROC=1000000" >> /etc/systemd/system.conf
 
-
 CONF_FILE="/etc/sysctl.d/99-network-optimized.conf"
-
 
 echo "写入优化配置..."
 
@@ -105,13 +100,13 @@ net.ipv4.tcp_window_scaling = 1
 #窗口
 net.ipv4.tcp_adv_win_scale = 3
 net.ipv4.tcp_moderate_rcvbuf = 1
-net.core.rmem_default = 6205767
-net.core.wmem_default = 3205767
-net.core.rmem_max = 98999928
+net.core.rmem_default = 9205767
+net.core.wmem_default = 920576
+net.core.rmem_max = 27099928
 net.core.wmem_max = 23999928
 
-net.ipv4.tcp_rmem = 4096 6205767 98999928
-net.ipv4.tcp_wmem = 4096 3205767 23999928
+net.ipv4.tcp_rmem = 4096 9205767 27099928
+net.ipv4.tcp_wmem = 4096 920576 23999928
 net.ipv4.udp_rmem_min = 4096
 net.ipv4.udp_wmem_min = 4096
 
