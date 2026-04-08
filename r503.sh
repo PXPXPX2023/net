@@ -107,11 +107,11 @@ net.ipv4.tcp_adv_win_scale = 3
 net.ipv4.tcp_moderate_rcvbuf = 1
 net.core.rmem_default = 1050576
 net.core.wmem_default = 1050576
-net.core.rmem_max = 21971520
-net.core.wmem_max = 21971520
+net.core.rmem_max = 22971528
+net.core.wmem_max = 22971528
 
-net.ipv4.tcp_rmem = 32768 1050576 21971520
-net.ipv4.tcp_wmem = 32768 1050576 21971520
+net.ipv4.tcp_rmem = 32768 1050576 22971528
+net.ipv4.tcp_wmem = 32768 1050576 22971528
 net.ipv4.udp_rmem_min = 32768
 net.ipv4.udp_wmem_min = 32768
 
