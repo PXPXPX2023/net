@@ -105,13 +105,13 @@ net.ipv4.tcp_window_scaling = 1
 #窗口
 net.ipv4.tcp_adv_win_scale = 3
 net.ipv4.tcp_moderate_rcvbuf = 1
-net.core.rmem_default = 820576
-net.core.wmem_default = 820576
+net.core.rmem_default = 760576
+net.core.wmem_default = 760576
 net.core.rmem_max = 24299528
 net.core.wmem_max = 24299528
 
-net.ipv4.tcp_rmem = 4096 820576 24299528
-net.ipv4.tcp_wmem = 4096 820576 24299528
+net.ipv4.tcp_rmem = 4096 760576 24299528
+net.ipv4.tcp_wmem = 4096 760576 24299528
 net.ipv4.udp_rmem_min = 4096
 net.ipv4.udp_wmem_min = 4096
 
@@ -159,7 +159,7 @@ net.ipv4.conf.default.arp_announce = 2
 net.ipv4.conf.lo.arp_announce = 2
 net.ipv4.conf.all.arp_announce = 2
 net.unix.max_dgram_qlen = 130000
-net.ipv4.tcp_notsent_lowat = 65536
+net.ipv4.tcp_notsent_lowat = 131072
 
 vm.vfs_cache_pressure = 10
 net.ipv4.conf.all.send_redirects = 0
@@ -208,7 +208,7 @@ net.ipv4.tcp_child_ehash_entries = 65535
 net.ipv4.ip_no_pmtu_disc = 0
 net.ipv4.tcp_stdurg = 0
 net.ipv4.tcp_challenge_ack_limit = 1200
-net.ipv4.tcp_comp_sack_delay_ns = 50000
+net.ipv4.tcp_comp_sack_delay_ns = 60000
 net.ipv4.tcp_comp_sack_nr = 1
 net.ipv4.tcp_fwmark_accept = 1
 net.ipv4.tcp_invalid_ratelimit = 800
@@ -241,10 +241,8 @@ net.ipv4.tcp_shrink_window = 0
 
 net.ipv4.neigh.default.unres_qlen_bytes = 65535
 
-kernel.printk=3 4 1 3
-kernel.sched_autogroup_enabled=0
-
-
+kernel.printk = 3 4 1 3
+kernel.sched_autogroup_enabled = 0
 
 
 
