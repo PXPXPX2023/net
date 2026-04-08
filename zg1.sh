@@ -100,13 +100,13 @@ net.ipv4.tcp_window_scaling = 1
 #窗口
 net.ipv4.tcp_adv_win_scale = 2
 net.ipv4.tcp_moderate_rcvbuf = 1
-net.core.rmem_default = 8192
-net.core.wmem_default = 8192
-net.core.rmem_max = 13105
-net.core.wmem_max = 13105
+net.core.rmem_default = 4096
+net.core.wmem_default = 4096
+net.core.rmem_max = 10000
+net.core.wmem_max = 10000
 
-net.ipv4.tcp_rmem = 4096 8192 13105
-net.ipv4.tcp_wmem = 4096 8192 13105
+net.ipv4.tcp_rmem = 4096 4096 10000
+net.ipv4.tcp_wmem = 4096 4096 10000
 net.ipv4.udp_rmem_min = 4096
 net.ipv4.udp_wmem_min = 4096
 
