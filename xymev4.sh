@@ -130,3 +130,7 @@ update_dat(){ bash /usr/local/etc/xray-script/update-dat.sh; }
 menu
 
 ln -sf /root/xray_reality_pro_max_v4.sh /usr/local/bin/xm
+
+hash -r
+
+xm
