@@ -105,10 +105,10 @@ net.core.wmem_default = 560576
 net.core.rmem_max = 21699928
 net.core.wmem_max = 21699928
 
-net.ipv4.tcp_rmem = 32768 560576 21699928
-net.ipv4.tcp_wmem = 32768 560576 21699928
-net.ipv4.udp_rmem_min = 32768
-net.ipv4.udp_wmem_min = 32768
+net.ipv4.tcp_rmem = 4096 560576 21699928
+net.ipv4.tcp_wmem = 4096 560576 21699928
+net.ipv4.udp_rmem_min = 4096
+net.ipv4.udp_wmem_min = 4096
 
 net.core.netdev_budget = 600
 net.ipv4.igmp_max_memberships = 200
@@ -154,7 +154,7 @@ net.ipv4.conf.default.arp_announce = 2
 net.ipv4.conf.lo.arp_announce = 2
 net.ipv4.conf.all.arp_announce = 2
 net.unix.max_dgram_qlen = 130000
-net.ipv4.tcp_notsent_lowat = 65536
+net.ipv4.tcp_notsent_lowat = 131072
 
 vm.vfs_cache_pressure = 10
 net.ipv4.conf.all.send_redirects = 0
