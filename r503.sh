@@ -239,9 +239,7 @@ net.ipv4.neigh.default.unres_qlen_bytes = 65535
 kernel.printk = 3 4 1 3
 kernel.sched_autogroup_enabled = 0
 
-
-
-#net.ipv4.tcp_frto = 2
+#net.ipv4.tcp_frto = 1
 #net.ipv4.tcp_low_latency = 1
 #net.ipv4.fib_sync_mem = 6666354
 #net.ipv4.tcp_fack = 1
