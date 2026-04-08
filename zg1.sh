@@ -100,13 +100,13 @@ net.ipv4.tcp_window_scaling = 1
 #窗口
 net.ipv4.tcp_adv_win_scale = 2
 net.ipv4.tcp_moderate_rcvbuf = 1
-net.core.rmem_default = 920576
-net.core.wmem_default = 920576
-net.core.rmem_max = 22999928
-net.core.wmem_max = 22999928
+net.core.rmem_default = 13105
+net.core.wmem_default = 13105
+net.core.rmem_max = 131056
+net.core.wmem_max = 131056
 
-net.ipv4.tcp_rmem = 4096 920576 22999928
-net.ipv4.tcp_wmem = 4096 920576 22999928
+net.ipv4.tcp_rmem = 4096 13105 131056
+net.ipv4.tcp_wmem = 4096 13105 131056
 net.ipv4.udp_rmem_min = 4096
 net.ipv4.udp_wmem_min = 4096
 
@@ -154,7 +154,7 @@ net.ipv4.conf.default.arp_announce = 2
 net.ipv4.conf.lo.arp_announce = 2
 net.ipv4.conf.all.arp_announce = 2
 net.unix.max_dgram_qlen = 130000
-net.ipv4.tcp_notsent_lowat = 65536
+net.ipv4.tcp_notsent_lowat = 15536
 
 vm.vfs_cache_pressure = 10
 net.ipv4.conf.all.send_redirects = 0
