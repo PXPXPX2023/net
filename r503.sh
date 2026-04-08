@@ -105,13 +105,13 @@ net.ipv4.tcp_window_scaling = 1
 #窗口
 net.ipv4.tcp_adv_win_scale = 3
 net.ipv4.tcp_moderate_rcvbuf = 1
-net.core.rmem_default = 5605767
-net.core.wmem_default = 5605767
-net.core.rmem_max = 24199528
-net.core.wmem_max = 24199528
+net.core.rmem_default = 3705767
+net.core.wmem_default = 3705767
+net.core.rmem_max = 24199928
+net.core.wmem_max = 24199928
 
-net.ipv4.tcp_rmem = 4096 5605767 24199528
-net.ipv4.tcp_wmem = 4096 5605767 24199528
+net.ipv4.tcp_rmem = 4096 3705767 24199928
+net.ipv4.tcp_wmem = 4096 3705767 24199928
 net.ipv4.udp_rmem_min = 4096
 net.ipv4.udp_wmem_min = 4096
 
@@ -159,7 +159,7 @@ net.ipv4.conf.default.arp_announce = 2
 net.ipv4.conf.lo.arp_announce = 2
 net.ipv4.conf.all.arp_announce = 2
 net.unix.max_dgram_qlen = 130000
-net.ipv4.tcp_notsent_lowat = 131072
+net.ipv4.tcp_notsent_lowat = 65536
 
 vm.vfs_cache_pressure = 10
 net.ipv4.conf.all.send_redirects = 0
@@ -168,7 +168,7 @@ net.ipv4.conf.all.accept_source_route = 0
 net.ipv4.ip_forward = 1
 net.ipv4.conf.all.arp_ignore = 1
 net.ipv4.tcp_early_retrans = 3
-net.ipv4.neigh.default.unres_qlen = 25535
+net.ipv4.neigh.default.unres_qlen = 35535
 net.ipv4.conf.all.route_localnet =0
 net.ipv4.tcp_orphan_retries = 8
 net.core.busy_poll = 0
