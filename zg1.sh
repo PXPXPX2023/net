@@ -105,8 +105,8 @@ net.core.wmem_default = 8192
 net.core.rmem_max = 10000
 net.core.wmem_max = 10000
 
-net.ipv4.tcp_rmem = 4096 8192 11000
-net.ipv4.tcp_wmem = 4096 8192 11000
+net.ipv4.tcp_rmem = 4096 8192 13000
+net.ipv4.tcp_wmem = 4096 8192 13000
 net.ipv4.udp_rmem_min = 4096
 net.ipv4.udp_wmem_min = 4096
 
