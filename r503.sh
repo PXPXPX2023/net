@@ -102,11 +102,11 @@ net.ipv4.tcp_adv_win_scale = 2
 net.ipv4.tcp_moderate_rcvbuf = 1
 net.core.rmem_default = 760576
 net.core.wmem_default = 760576
-net.core.rmem_max = 25699928
-net.core.wmem_max = 25699928
+net.core.rmem_max = 23699928
+net.core.wmem_max = 23699928
 
-net.ipv4.tcp_rmem = 81920 760576 25699928
-net.ipv4.tcp_wmem = 81920 760576 25699928
+net.ipv4.tcp_rmem = 65536 760576 23699928
+net.ipv4.tcp_wmem = 65536 760576 23699928
 net.ipv4.udp_rmem_min = 13107
 net.ipv4.udp_wmem_min = 13107
 
@@ -187,8 +187,8 @@ fs.protected_hardlinks = 1
 fs.protected_regular = 2
 fs.protected_symlinks = 1
 
-net.core.rps_sock_flow_entries = 32768
-net.core.flow_limit_table_len = 65536
+net.core.rps_sock_flow_entries = 65536
+net.core.flow_limit_table_len = 131072
 
 net.ipv4.tcp_workaround_signed_windows = 1
 vm.dirty_ratio = 35
@@ -203,7 +203,7 @@ net.ipv4.tcp_child_ehash_entries = 65535
 net.ipv4.ip_no_pmtu_disc = 0
 net.ipv4.tcp_stdurg = 0
 net.ipv4.tcp_challenge_ack_limit = 1200
-net.ipv4.tcp_comp_sack_delay_ns = 60000
+net.ipv4.tcp_comp_sack_delay_ns = 50000
 net.ipv4.tcp_comp_sack_nr = 1
 net.ipv4.tcp_fwmark_accept = 1
 net.ipv4.tcp_invalid_ratelimit = 800
