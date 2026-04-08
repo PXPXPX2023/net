@@ -81,13 +81,6 @@ echo "DefaultLimitNPROC=1000000" >> /etc/systemd/system.conf
 
 
 CONF_FILE="/etc/sysctl.d/99-network-optimized.conf"
-kernel.pid_max = 131072
-kernel.panic = 1
-kernel.sysrq = 1
-kernel.core_pattern = core_%e
-kernel.printk = 3 4 1 3
-kernel.numa_balancing = 0
-kernel.sched_autogroup_enabled = 0
 vm.swappiness = 5
 vm.dirty_ratio = 5
 vm.dirty_background_ratio = 2
@@ -142,6 +135,13 @@ net.ipv4.conf.default.arp_announce = 2
 net.ipv4.conf.all.arp_ignore = 1
 net.ipv4.conf.default.arp_ignore = 1
 
+kernel.pid_max = 131072
+kernel.panic = 1
+kernel.sysrq = 1
+kernel.core_pattern = core_%e
+kernel.printk = 3 4 1 3
+kernel.numa_balancing = 0
+kernel.sched_autogroup_enabled = 0
 
 EOF
 
