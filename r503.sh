@@ -102,11 +102,11 @@ net.ipv4.tcp_adv_win_scale = 2
 net.ipv4.tcp_moderate_rcvbuf = 1
 net.core.rmem_default = 760576
 net.core.wmem_default = 760576
-net.core.rmem_max = 23699928
-net.core.wmem_max = 23699928
+net.core.rmem_max = 22699928
+net.core.wmem_max = 22699928
 
-net.ipv4.tcp_rmem = 65536 760576 23699928
-net.ipv4.tcp_wmem = 65536 760576 23699928
+net.ipv4.tcp_rmem = 65536 760576 22699928
+net.ipv4.tcp_wmem = 65536 760576 22699928
 net.ipv4.udp_rmem_min = 13107
 net.ipv4.udp_wmem_min = 13107
 
@@ -154,7 +154,7 @@ net.ipv4.conf.default.arp_announce = 2
 net.ipv4.conf.lo.arp_announce = 2
 net.ipv4.conf.all.arp_announce = 2
 net.unix.max_dgram_qlen = 130000
-net.ipv4.tcp_notsent_lowat = 131072
+net.ipv4.tcp_notsent_lowat = 262144
 
 vm.vfs_cache_pressure = 10
 net.ipv4.conf.all.send_redirects = 0
@@ -187,8 +187,8 @@ fs.protected_hardlinks = 1
 fs.protected_regular = 2
 fs.protected_symlinks = 1
 
-net.core.rps_sock_flow_entries = 65536
-net.core.flow_limit_table_len = 131072
+net.core.rps_sock_flow_entries = 131072
+net.core.flow_limit_table_len = 262144
 
 net.ipv4.tcp_workaround_signed_windows = 1
 vm.dirty_ratio = 35
