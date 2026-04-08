@@ -112,8 +112,19 @@ modify_user() {
 }
 
 # ===== 占位函数（兼容你原脚本）=====
-install_xray(){ echo "用你v3版本安装函数"; }
-upgrade_xray(){ echo "升级功能保留"; }
+install_xray(){ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install; }
+upgrade_xray(){ echo "获取可用版本..."
+    curl -s https://api.github.com/repos/XTLS/Xray-core/releases \
+    | grep tag_name | cut -d '"' -f 4 | head -n 10
+
+    read -p "输入要升级的版本号（例如 v1.8.10）: " VERSION
+
+    if [[ -z "$VERSION" ]]; then
+        echo "取消"
+        exit 1
+    fi
+
+    bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u root -v $VERSION; }
 update_dat(){ bash /usr/local/etc/xray-script/update-dat.sh; }
 
 menu
