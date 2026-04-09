@@ -21,8 +21,8 @@ fi
 
 # – 颜色 –––––––––––––––––––––––––
 
-red=’\e[31m’; yellow=’\e[33m’; gray=’\e[90m’; green=’\e[92m’
-blue=’\e[94m’; magenta=’\e[95m’; cyan=’\e[96m’; none=’\e[0m’
+red='\e[31m'; yellow='\e[33m'; gray='\e[90m'; green='\e[92m'
+blue='\e[94m'; magenta='\e[95m'; cyan='\e[96m'; none='\e[0m'
 _red()     { echo -e "${red}$*${none}";     }
 _blue()    { echo -e "${blue}$*${none}";    }
 _cyan()    { echo -e "${cyan}$*${none}";    }
@@ -165,15 +165,15 @@ return 1
 fi
 # 检查并修复 VLESS clients 为 null
 local vless_count
-vless_count=$(jq ‘[.inbounds[]? | select(.protocol=="vless")] | length’ "$CONFIG" 2>/dev/null || echo 0)
+vless_count=$(jq '[.inbounds[]? | select(.protocol=="vless")] | length' "$CONFIG" 2>/dev/null || echo 0)
 if [[ "$vless_count" -gt 0 ]]; then
 local cn
-cn=$(jq -r ‘(.inbounds[]? | select(.protocol=="vless") | .settings.clients) // "null"’   
+cn=$(jq -r '(.inbounds[]? | select(.protocol=="vless") | .settings.clients) // "null"'   
 "$CONFIG" 2>/dev/null | head -1)
 if [[ "$cn" == "null" ]]; then
 warn "VLESS clients 为 null，自动修复…"
 _safe_jq_write   
-‘(.inbounds[] | select(.protocol=="vless") | .settings.clients) = []’ || return 1
+'(.inbounds[] | select(.protocol=="vless") | .settings.clients) = []' || return 1
 fi
 fi
 return 0
@@ -228,12 +228,12 @@ gen_uuid() { cat /proc/sys/kernel/random/uuid; }
 
 gen_short_id() {
 local len=$((RANDOM % 2 == 0 ? 8 : 16))
-head -c 32 /dev/urandom | xxd -p | tr -d ‘\n’ | head -c "$len"
+head -c 32 /dev/urandom | xxd -p | tr -d '\n' | head -c "$len"
 echo
 }
 
 gen_ss_pass() {
-head -c 24 /dev/urandom | base64 | tr -d ‘=/+\n’ | head -c 24
+head -c 24 /dev/urandom | base64 | tr -d '=/+\n' | head -c 24
 echo
 }
 
@@ -247,8 +247,8 @@ die "xray 二进制不存在，无法生成密钥对: $XRAY_BIN"
 fi
 local keys
 keys=$("$XRAY_BIN" x25519 2>/dev/null)
-X25519_PRIV=$(echo "$keys" | grep "Private key" | awk ‘{print $3}’)
-X25519_PUB=$(echo "$keys"  | grep "Public key"  | awk ‘{print $3}’)
+X25519_PRIV=$(echo "$keys" | grep "Private key" | awk '{print $3}')
+X25519_PUB=$(echo "$keys"  | grep "Public key"  | awk '{print $3}')
 if [[ -z "$X25519_PRIV" || -z "$X25519_PUB" ]]; then
 die "x25519 密钥对生成失败，输出为空"
 fi
@@ -259,27 +259,27 @@ fi
 derive_pubkey() {
 local priv="$1"
 [[ ! -x "$XRAY_BIN" ]] && echo "" && return
-"$XRAY_BIN" x25519 -i "$priv" 2>/dev/null | grep "Public key" | awk ‘{print $3}’
+"$XRAY_BIN" x25519 -i "$priv" 2>/dev/null | grep "Public key" | awk '{print $3}'
 }
 
 # – 写入 update-dat.sh + cron —————————–
 
 install_update_dat() {
 mkdir -p "$SCRIPT_DIR" "$LOG_DIR"
-cat > "$UPDATE_DAT_SCRIPT" <<‘UPDSH’
+cat > "$UPDATE_DAT_SCRIPT" <<'UPDSH'
 #!/usr/bin/env bash
 set -e
 XRAY_DAT_DIR="/usr/local/share/xray"
 GEOIP_URL="https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat"
 GEOSITE_URL="https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat"
 mkdir -p "$XRAY_DAT_DIR" && cd "$XRAY_DAT_DIR"
-echo "[$(date ‘+%Y-%m-%d %H:%M:%S’)] 更新 geoip.dat…"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] 更新 geoip.dat…"
 curl -fsSL -o geoip.dat.new   "$GEOIP_URL"   && mv -f geoip.dat.new   geoip.dat
-echo "[$(date ‘+%Y-%m-%d %H:%M:%S’)] 更新 geosite.dat…"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] 更新 geosite.dat…"
 curl -fsSL -o geosite.dat.new "$GEOSITE_URL" && mv -f geosite.dat.new geosite.dat
-echo "[$(date ‘+%Y-%m-%d %H:%M:%S’)] dat 更新完成"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] dat 更新完成"
 systemctl -q is-active xray && systemctl restart xray   
-&& echo "[$(date ‘+%Y-%m-%d %H:%M:%S’)] Xray 已重启"
+&& echo "[$(date '+%Y-%m-%d %H:%M:%S')] Xray 已重启"
 UPDSH
 chmod +x "$UPDATE_DAT_SCRIPT"
 local job="0 3 * * * $UPDATE_DAT_SCRIPT >> $LOG_DIR/update-dat.log 2>&1"
@@ -422,7 +422,7 @@ print_vless_link() {
 local uuid="$1" port="$2" sni="$3" priv="$4" sid="$5" label="${6:-xray-reality}"
 # 优先从 config 读取已存储的公钥，否则实时推导
 local pub
-pub=$(jq -r ‘.inbounds[]? | select(.protocol=="vless") | .streamSettings.realitySettings.publicKey // ""’   
+pub=$(jq -r '.inbounds[]? | select(.protocol=="vless") | .streamSettings.realitySettings.publicKey // ""'   
 "$CONFIG" 2>/dev/null | head -1)
 [[ -z "$pub" ]] && pub=$(derive_pubkey "$priv")
 
@@ -458,7 +458,7 @@ hr
 print_ss_link() {
 local pass="$1" method="$2" port="$3" label="${4:-xray-ss}"
 get_server_ip
-local b64; b64=$(printf ‘%s’ "${method}:${pass}" | base64 | tr -d ‘\n’)
+local b64; b64=$(printf '%s' "${method}:${pass}" | base64 | tr -d '\n')
 local link="ss://${b64}@${SERVER_IP}:${port}#${label}"
 hr
 _cyan "  Shadowsocks 连接参数"
@@ -562,13 +562,13 @@ fi
 # – 获取 VLESS inbound 在 inbounds 数组里的索引 –––––
 
 _get_vless_idx() {
-jq ‘[.inbounds | to_entries[] | select(.value.protocol=="vless")] | .[0].key’ "$CONFIG" 2>/dev/null
+jq '[.inbounds | to_entries[] | select(.value.protocol=="vless")] | .[0].key' "$CONFIG" 2>/dev/null
 }
 
 # – 获取 SS inbound 在 inbounds 数组里的索引 ———––
 
 _get_ss_idx() {
-jq ‘[.inbounds | to_entries[] | select(.value.protocol=="shadowsocks")] | .[0].key’ "$CONFIG" 2>/dev/null
+jq '[.inbounds | to_entries[] | select(.value.protocol=="shadowsocks")] | .[0].key' "$CONFIG" 2>/dev/null
 }
 
 # +==========================================================+
@@ -977,7 +977,7 @@ done
 }
 
 _vless_client_count() {
-jq ‘[.inbounds[]? | select(.protocol=="vless") | .settings.clients[]?] | length’   
+jq '[.inbounds[]? | select(.protocol=="vless") | .settings.clients[]?] | length'   
 "$CONFIG" 2>/dev/null || echo 0
 }
 
@@ -989,8 +989,8 @@ warn "暂无用户"; return 1
 fi
 printf "  ${cyan}%-4s %-38s %-20s${none}\n" "No." "UUID" "Flow"
 hr
-jq -r ‘.inbounds[]? | select(.protocol=="vless") | .settings.clients[]? | "(.id) (.flow // "无")"’   
-"$CONFIG" 2>/dev/null | awk ‘{printf "  %-4d %-38s %-20s\n", NR, $1, $2}’
+jq -r '.inbounds[]? | select(.protocol=="vless") | .settings.clients[]? | "(.id) (.flow // "无")"'   
+"$CONFIG" 2>/dev/null | awk '{printf "  %-4d %-38s %-20s\n", NR, $1, $2}'
 hr
 info "共 $count 个用户"
 return 0
@@ -1230,9 +1230,9 @@ _global_block_rules() {
 title "Block 规则独立开关"
 while true; do
 local bt_en cn_en ads_en
-bt_en=$(jq -r  ‘.routing.rules[]? | select(.tag_id=="bt")  | ._enabled’ "$CONFIG" 2>/dev/null || echo "false")
-cn_en=$(jq -r  ‘.routing.rules[]? | select(.tag_id=="cn")  | ._enabled’ "$CONFIG" 2>/dev/null || echo "false")
-ads_en=$(jq -r ‘.routing.rules[]? | select(.tag_id=="ads") | ._enabled’ "$CONFIG" 2>/dev/null || echo "false")
+bt_en=$(jq -r  '.routing.rules[]? | select(.tag_id=="bt")  | ._enabled' "$CONFIG" 2>/dev/null || echo "false")
+cn_en=$(jq -r  '.routing.rules[]? | select(.tag_id=="cn")  | ._enabled' "$CONFIG" 2>/dev/null || echo "false")
+ads_en=$(jq -r '.routing.rules[]? | select(.tag_id=="ads") | ._enabled' "$CONFIG" 2>/dev/null || echo "false")
 
 ```
     local s_bt s_cn s_ads
@@ -1277,7 +1277,7 @@ hr
 local i=1
 local bak_list=()
 while IFS= read -r bak; do
-local bt; bt=$(stat -c "%y" "$bak" 2>/dev/null | cut -d’.’ -f1 || echo "未知")
+local bt; bt=$(stat -c "%y" "$bak" 2>/dev/null | cut -d'.' -f1 || echo "未知")
 printf "  ${cyan}%d${none}. %-45s [%s]\n" "$i" "$(basename "$bak")" "$bt"
 bak_list+=("$bak")
 ((i++))
@@ -1455,7 +1455,7 @@ if ! check_config; then
 read -rp "按 Enter 返回…" _; return
 fi
 local ss_exists
-ss_exists=$(jq ‘[.inbounds[]? | select(.protocol=="shadowsocks")] | length’ "$CONFIG" 2>/dev/null || echo 0)
+ss_exists=$(jq '[.inbounds[]? | select(.protocol=="shadowsocks")] | length' "$CONFIG" 2>/dev/null || echo 0)
 local ss_status
 [[ "$ss_exists" -gt 0 ]] && ss_status="${green}已启用${none}" || ss_status="${red}未启用${none}"
 echo -e "  Shadowsocks 状态: $ss_status"
@@ -1486,10 +1486,10 @@ done
 
 _proto_add_ss() {
 local ss_exists
-ss_exists=$(jq ‘[.inbounds[]? | select(.protocol=="shadowsocks")] | length’ "$CONFIG" 2>/dev/null || echo 0)
+ss_exists=$(jq '[.inbounds[]? | select(.protocol=="shadowsocks")] | length' "$CONFIG" 2>/dev/null || echo 0)
 if [[ "$ss_exists" -gt 0 ]]; then
 warn "Shadowsocks 已存在，将重新配置"
-_safe_jq_write ‘del(.inbounds[] | select(.protocol=="shadowsocks"))’ || return
+_safe_jq_write 'del(.inbounds[] | select(.protocol=="shadowsocks"))' || return
 fi
 local port pass method
 port=$(input_port "SS 监听端口" "8388")
@@ -1502,7 +1502,7 @@ print_ss_link "$pass" "$method" "$port"
 }
 
 _proto_show_ss() {
-local sc; sc=$(jq ‘[.inbounds[]? | select(.protocol=="shadowsocks")] | length’ "$CONFIG" 2>/dev/null || echo 0)
+local sc; sc=$(jq '[.inbounds[]? | select(.protocol=="shadowsocks")] | length' "$CONFIG" 2>/dev/null || echo 0)
 [[ "$sc" -eq 0 ]] && warn "Shadowsocks 未配置" && return
 local sidx; sidx=$(_get_ss_idx)
 local s_port s_pass s_method
@@ -1513,7 +1513,7 @@ print_ss_link "$s_pass" "$s_method" "$s_port"
 }
 
 _proto_ss_pass() {
-local sc; sc=$(jq ‘[.inbounds[]? | select(.protocol=="shadowsocks")] | length’ "$CONFIG" 2>/dev/null || echo 0)
+local sc; sc=$(jq '[.inbounds[]? | select(.protocol=="shadowsocks")] | length' "$CONFIG" 2>/dev/null || echo 0)
 [[ "$sc" -eq 0 ]] && warn "Shadowsocks 未配置" && return
 local new_pass; new_pass=$(gen_ss_pass)
 local sidx; sidx=$(_get_ss_idx)
@@ -1523,7 +1523,7 @@ info "SS 密码已更新: $new_pass"
 }
 
 _proto_ss_port() {
-local sc; sc=$(jq ‘[.inbounds[]? | select(.protocol=="shadowsocks")] | length’ "$CONFIG" 2>/dev/null || echo 0)
+local sc; sc=$(jq '[.inbounds[]? | select(.protocol=="shadowsocks")] | length' "$CONFIG" 2>/dev/null || echo 0)
 [[ "$sc" -eq 0 ]] && warn "Shadowsocks 未配置" && return
 local sidx; sidx=$(_get_ss_idx)
 local cur_port; cur_port=$(jq -r ".inbounds[$sidx].port" "$CONFIG")
@@ -1534,7 +1534,7 @@ info "SS 端口已更改: $cur_port → $np"
 }
 
 _proto_ss_method() {
-local sc; sc=$(jq ‘[.inbounds[]? | select(.protocol=="shadowsocks")] | length’ "$CONFIG" 2>/dev/null || echo 0)
+local sc; sc=$(jq '[.inbounds[]? | select(.protocol=="shadowsocks")] | length' "$CONFIG" 2>/dev/null || echo 0)
 [[ "$sc" -eq 0 ]] && warn "Shadowsocks 未配置" && return
 local method; method=$(_select_ss_method)
 local sidx; sidx=$(_get_ss_idx)
@@ -1544,11 +1544,11 @@ info "SS 加密方式已更改为: $method"
 }
 
 _proto_del_ss() {
-local sc; sc=$(jq ‘[.inbounds[]? | select(.protocol=="shadowsocks")] | length’ "$CONFIG" 2>/dev/null || echo 0)
+local sc; sc=$(jq '[.inbounds[]? | select(.protocol=="shadowsocks")] | length' "$CONFIG" 2>/dev/null || echo 0)
 [[ "$sc" -eq 0 ]] && warn "Shadowsocks 未配置" && return
 read -rp "确认删除 Shadowsocks? [y/N]: " c
 [[ "$c" != "y" ]] && warn "已取消" && return
-_safe_jq_write ‘del(.inbounds[] | select(.protocol=="shadowsocks"))’ || return
+_safe_jq_write 'del(.inbounds[] | select(.protocol=="shadowsocks"))' || return
 systemctl restart xray
 info "Shadowsocks 已删除"
 }
@@ -1617,8 +1617,8 @@ if [[ ! -x "$XRAY_BIN" ]]; then
 error "xray 未安装"
 else
 local keys; keys=$("$XRAY_BIN" x25519 2>/dev/null)
-local p; p=$(echo "$keys" | grep "Private key" | awk ‘{print $3}’)
-local pub; pub=$(echo "$keys" | grep "Public key" | awk ‘{print $3}’)
+local p; p=$(echo "$keys" | grep "Private key" | awk '{print $3}')
+local pub; pub=$(echo "$keys" | grep "Public key" | awk '{print $3}')
 hr
 printf "  %-10s %s\n" "私钥:" "$p"
 printf "  %-10s %s\n" "公钥:" "$pub"
