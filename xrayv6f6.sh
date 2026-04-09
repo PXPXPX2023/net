@@ -14,8 +14,8 @@
 
 # 必须用 bash 运行，拒绝 sh / dash
 
-if [ -z “$BASH_VERSION” ]; then
-echo “错误: 请用 bash 运行此脚本: bash xrayv6.sh”
+if [ -z "$BASH_VERSION" ]; then
+echo "错误: 请用 bash 运行此脚本: bash xrayv6.sh"
 exit 1
 fi
 
@@ -23,29 +23,29 @@ fi
 
 red=’\e[31m’; yellow=’\e[33m’; gray=’\e[90m’; green=’\e[92m’
 blue=’\e[94m’; magenta=’\e[95m’; cyan=’\e[96m’; none=’\e[0m’
-_red()     { echo -e “${red}$*${none}”;     }
-_blue()    { echo -e “${blue}$*${none}”;    }
-_cyan()    { echo -e “${cyan}$*${none}”;    }
-_green()   { echo -e “${green}$*${none}”;   }
-_yellow()  { echo -e “${yellow}$*${none}”;  }
-_magenta() { echo -e “${magenta}$*${none}”; }
-_red_bg()  { echo -e “\e[41m$*${none}”;    }
+_red()     { echo -e "${red}$*${none}";     }
+_blue()    { echo -e "${blue}$*${none}";    }
+_cyan()    { echo -e "${cyan}$*${none}";    }
+_green()   { echo -e "${green}$*${none}";   }
+_yellow()  { echo -e "${yellow}$*${none}";  }
+_magenta() { echo -e "${magenta}$*${none}"; }
+_red_bg()  { echo -e "\e[41m$*${none}";    }
 
-is_err=$(_red_bg  “错误!”)
-is_warn=$(_red_bg “警告!”)
+is_err=$(_red_bg  "错误!")
+is_warn=$(_red_bg "警告!")
 
 # 日志函数
 
-info()  { echo -e “${green}[✓]${none} $*”; }
-warn()  { echo -e “${yellow}[!]${none} $*”; }
-error() { echo -e “${red}[✗]${none} $*”;   }
-die()   { echo -e “\n${is_err} $*\n”; exit 1; }
+info()  { echo -e "${green}[✓]${none} $*"; }
+warn()  { echo -e "${yellow}[!]${none} $*"; }
+error() { echo -e "${red}[✗]${none} $*";   }
+die()   { echo -e "\n${is_err} $*\n"; exit 1; }
 title() {
-echo -e “\n${blue}===================================================${none}”
-echo -e “  ${cyan}$*${none}”
-echo -e “${blue}===================================================${none}”
+echo -e "\n${blue}===================================================${none}"
+echo -e "  ${cyan}$*${none}"
+echo -e "${blue}===================================================${none}"
 }
-hr() { echo -e “${gray}––––––––––––––––––––––––––${none}”; }
+hr() { echo -e "${gray}––––––––––––––––––––––––––${none}"; }
 
 msg() {
 case $1 in
@@ -55,31 +55,31 @@ ok)   local c=$green  ;;
 *)    local c=$none   ;;
 esac
 local _t; _t=$(date +%T)
-echo -e “${c}${_t}${none}) ${2}”
+echo -e "${c}${_t}${none}) ${2}"
 }
 
 # – 全局路径 –––––––––––––––––––––––
 
-XRAY_BIN=”/usr/local/bin/xray”
-CONFIG=”/usr/local/etc/xray/config.json”
-CONFIG_DIR=”/usr/local/etc/xray”
-SCRIPT_DIR=”/usr/local/etc/xray-script”
-UPDATE_DAT_SCRIPT=”$SCRIPT_DIR/update-dat.sh”
-DAT_DIR=”/usr/local/share/xray”
-LOG_DIR=”/var/log/xray”
-SCRIPT_PATH=$(realpath “$0”)
-SYMLINK=”/usr/local/bin/xrv”
+XRAY_BIN="/usr/local/bin/xray"
+CONFIG="/usr/local/etc/xray/config.json"
+CONFIG_DIR="/usr/local/etc/xray"
+SCRIPT_DIR="/usr/local/etc/xray-script"
+UPDATE_DAT_SCRIPT="$SCRIPT_DIR/update-dat.sh"
+DAT_DIR="/usr/local/share/xray"
+LOG_DIR="/var/log/xray"
+SCRIPT_PATH=$(realpath "$0")
+SYMLINK="/usr/local/bin/xrv"
 
-GEOIP_URL=“https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat”
-GEOSITE_URL=“https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat”
+GEOIP_URL="https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat"
+GEOSITE_URL="https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat"
 
 # – 架构检测 –––––––––––––––––––––––
 
 detect_arch() {
 case $(uname -m) in
-amd64|x86_64)      CORE_ARCH=“64”;        JQ_ARCH=“amd64” ;;
-*aarch64*|*armv8*) CORE_ARCH=“arm64-v8a”; JQ_ARCH=“arm64” ;;
-*) die “仅支持 64 位系统 (x86_64 / aarch64)” ;;
+amd64|x86_64)      CORE_ARCH="64";        JQ_ARCH="amd64" ;;
+*aarch64*|*armv8*) CORE_ARCH="arm64-v8a"; JQ_ARCH="arm64" ;;
+*) die "仅支持 64 位系统 (x86_64 / aarch64)" ;;
 esac
 }
 
@@ -87,21 +87,21 @@ esac
 
 detect_pkg_manager() {
 PKG_CMD=$(type -P apt-get || type -P yum || true)
-[[ -z “$PKG_CMD” ]] && die “仅支持 ${yellow}apt-get${none} / ${yellow}yum${none} 系统”
+[[ -z "$PKG_CMD" ]] && die "仅支持 ${yellow}apt-get${none} / ${yellow}yum${none} 系统"
 }
 
 # – 安装缺失依赖 ——————————————
 
 install_pkg() {
-local need=””
-for i in “$@”; do
-command -v “$i” &>/dev/null || need=”$need $i”
+local need=""
+for i in "$@"; do
+command -v "$i" &>/dev/null || need="$need $i"
 done
-if [[ -n “$need” ]]; then
-msg warn “安装依赖:$need”
+if [[ -n "$need" ]]; then
+msg warn "安装依赖:$need"
 # shellcheck disable=SC2086
 $PKG_CMD install -y $need &>/dev/null || {
-[[ “$PKG_CMD” =~ yum ]] && yum install epel-release -y &>/dev/null
+[[ "$PKG_CMD" =~ yum ]] && yum install epel-release -y &>/dev/null
 $PKG_CMD update -y &>/dev/null
 # shellcheck disable=SC2086
 $PKG_CMD install -y $need &>/dev/null || true
@@ -112,29 +112,29 @@ fi
 # – wget 封装 ———————————————
 
 _wget() {
-[[ -n “${proxy:-}” ]] && export https_proxy=$proxy
-wget –no-check-certificate “$@”
+[[ -n "${proxy:-}" ]] && export https_proxy=$proxy
+wget –no-check-certificate "$@"
 }
 
 # – 获取公网 IP —————————————––
 
 get_server_ip() {
-SERVER_IP=””
+SERVER_IP=""
 local trace
-trace=$(_wget -4 -qO- https://one.one.one.one/cdn-cgi/trace 2>/dev/null | grep “^ip=” || true)
-[[ -n “$trace” ]] && SERVER_IP=”${trace#ip=}”
-[[ -z “$SERVER_IP” ]] &&   
+trace=$(_wget -4 -qO- https://one.one.one.one/cdn-cgi/trace 2>/dev/null | grep "^ip=" || true)
+[[ -n "$trace" ]] && SERVER_IP="${trace#ip=}"
+[[ -z "$SERVER_IP" ]] &&   
 SERVER_IP=$(curl -fsSL –max-time 6 https://api4.ipify.org 2>/dev/null || true)
-[[ -z “$SERVER_IP” ]] &&   
+[[ -z "$SERVER_IP" ]] &&   
 SERVER_IP=$(curl -fsSL –max-time 6 https://ifconfig.me 2>/dev/null || true)
-[[ -z “$SERVER_IP” ]] && SERVER_IP=“YOUR_SERVER_IP”
+[[ -z "$SERVER_IP" ]] && SERVER_IP="YOUR_SERVER_IP"
 }
 
 # – 初始化检查 ––––––––––––––––––––––
 
 preflight() {
-[[ $EUID -ne 0 ]] && die “当前非 ${yellow}ROOT${none} 用户”
-[[ ! $(type -P systemctl) ]] && die “系统缺少 ${yellow}systemctl${none}”
+[[ $EUID -ne 0 ]] && die "当前非 ${yellow}ROOT${none} 用户"
+[[ ! $(type -P systemctl) ]] && die "系统缺少 ${yellow}systemctl${none}"
 detect_arch
 detect_pkg_manager
 install_pkg jq curl wget xxd unzip
@@ -153,27 +153,27 @@ fi
 # – 配置文件合法性检查 + null 自动修复 —————––
 
 check_config() {
-if [[ ! -f “$CONFIG” ]]; then
-error “配置文件不存在: $CONFIG”
-warn “请先执行「1. 安装」”
+if [[ ! -f "$CONFIG" ]]; then
+error "配置文件不存在: $CONFIG"
+warn "请先执行「1. 安装」"
 return 1
 fi
-if ! jq empty “$CONFIG” 2>/dev/null; then
-error “config.json 格式损坏”
+if ! jq empty "$CONFIG" 2>/dev/null; then
+error "config.json 格式损坏"
 _try_restore_backup
 return 1
 fi
 # 检查并修复 VLESS clients 为 null
 local vless_count
-vless_count=$(jq ‘[.inbounds[]? | select(.protocol==“vless”)] | length’ “$CONFIG” 2>/dev/null || echo 0)
-if [[ “$vless_count” -gt 0 ]]; then
+vless_count=$(jq ‘[.inbounds[]? | select(.protocol=="vless")] | length’ "$CONFIG" 2>/dev/null || echo 0)
+if [[ "$vless_count" -gt 0 ]]; then
 local cn
-cn=$(jq -r ‘(.inbounds[]? | select(.protocol==“vless”) | .settings.clients) // “null”’   
-“$CONFIG” 2>/dev/null | head -1)
-if [[ “$cn” == “null” ]]; then
-warn “VLESS clients 为 null，自动修复…”
+cn=$(jq -r ‘(.inbounds[]? | select(.protocol=="vless") | .settings.clients) // "null"’   
+"$CONFIG" 2>/dev/null | head -1)
+if [[ "$cn" == "null" ]]; then
+warn "VLESS clients 为 null，自动修复…"
 _safe_jq_write   
-‘(.inbounds[] | select(.protocol==“vless”) | .settings.clients) = []’ || return 1
+‘(.inbounds[] | select(.protocol=="vless") | .settings.clients) = []’ || return 1
 fi
 fi
 return 0
@@ -181,14 +181,14 @@ return 0
 
 _try_restore_backup() {
 local bak
-bak=$(ls -t “${CONFIG}.bak.”* 2>/dev/null | head -n1 || true)
-if [[ -n “$bak” ]]; then
-warn “发现最近备份: $bak”
-read -rp “是否还原? [y/N]: “ ans
-if [[ “$ans” == “y” ]]; then
-cp “$bak” “$CONFIG”
+bak=$(ls -t "${CONFIG}.bak."* 2>/dev/null | head -n1 || true)
+if [[ -n "$bak" ]]; then
+warn "发现最近备份: $bak"
+read -rp "是否还原? [y/N]: " ans
+if [[ "$ans" == "y" ]]; then
+cp "$bak" "$CONFIG"
 systemctl restart xray 2>/dev/null || true
-info “已还原并重启 Xray”
+info "已还原并重启 Xray"
 fi
 fi
 }
@@ -196,9 +196,9 @@ fi
 # – 安全 jq 写入（原子替换 + 自动备份）——————
 
 *safe_jq_write() {
-local filter=”$1”
+local filter="$1"
 local tmp; tmp=$(mktemp /tmp/xray_cfg_XXXXXX.json)
-local bak=”${CONFIG}.bak.$(date +%Y%m%d*%H%M%S)”
+local bak="${CONFIG}.bak.$(date +%Y%m%d*%H%M%S)"
 
 ```
 if [[ ! -f "$CONFIG" ]]; then
@@ -228,7 +228,7 @@ gen_uuid() { cat /proc/sys/kernel/random/uuid; }
 
 gen_short_id() {
 local len=$((RANDOM % 2 == 0 ? 8 : 16))
-head -c 32 /dev/urandom | xxd -p | tr -d ‘\n’ | head -c “$len”
+head -c 32 /dev/urandom | xxd -p | tr -d ‘\n’ | head -c "$len"
 echo
 }
 
@@ -242,72 +242,72 @@ echo
 # 输出到全局变量 X25519_PRIV / X25519_PUB
 
 gen_x25519() {
-if [[ ! -x “$XRAY_BIN” ]]; then
-die “xray 二进制不存在，无法生成密钥对: $XRAY_BIN”
+if [[ ! -x "$XRAY_BIN" ]]; then
+die "xray 二进制不存在，无法生成密钥对: $XRAY_BIN"
 fi
 local keys
-keys=$(”$XRAY_BIN” x25519 2>/dev/null)
-X25519_PRIV=$(echo “$keys” | grep “Private key” | awk ‘{print $3}’)
-X25519_PUB=$(echo “$keys”  | grep “Public key”  | awk ‘{print $3}’)
-if [[ -z “$X25519_PRIV” || -z “$X25519_PUB” ]]; then
-die “x25519 密钥对生成失败，输出为空”
+keys=$("$XRAY_BIN" x25519 2>/dev/null)
+X25519_PRIV=$(echo "$keys" | grep "Private key" | awk ‘{print $3}’)
+X25519_PUB=$(echo "$keys"  | grep "Public key"  | awk ‘{print $3}’)
+if [[ -z "$X25519_PRIV" || -z "$X25519_PUB" ]]; then
+die "x25519 密钥对生成失败，输出为空"
 fi
 }
 
 # 由私钥推导公钥
 
 derive_pubkey() {
-local priv=”$1”
-[[ ! -x “$XRAY_BIN” ]] && echo “” && return
-“$XRAY_BIN” x25519 -i “$priv” 2>/dev/null | grep “Public key” | awk ‘{print $3}’
+local priv="$1"
+[[ ! -x "$XRAY_BIN" ]] && echo "" && return
+"$XRAY_BIN" x25519 -i "$priv" 2>/dev/null | grep "Public key" | awk ‘{print $3}’
 }
 
 # – 写入 update-dat.sh + cron —————————–
 
 install_update_dat() {
-mkdir -p “$SCRIPT_DIR” “$LOG_DIR”
-cat > “$UPDATE_DAT_SCRIPT” <<‘UPDSH’
+mkdir -p "$SCRIPT_DIR" "$LOG_DIR"
+cat > "$UPDATE_DAT_SCRIPT" <<‘UPDSH’
 #!/usr/bin/env bash
 set -e
-XRAY_DAT_DIR=”/usr/local/share/xray”
-GEOIP_URL=“https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat”
-GEOSITE_URL=“https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat”
-mkdir -p “$XRAY_DAT_DIR” && cd “$XRAY_DAT_DIR”
-echo “[$(date ‘+%Y-%m-%d %H:%M:%S’)] 更新 geoip.dat…”
-curl -fsSL -o geoip.dat.new   “$GEOIP_URL”   && mv -f geoip.dat.new   geoip.dat
-echo “[$(date ‘+%Y-%m-%d %H:%M:%S’)] 更新 geosite.dat…”
-curl -fsSL -o geosite.dat.new “$GEOSITE_URL” && mv -f geosite.dat.new geosite.dat
-echo “[$(date ‘+%Y-%m-%d %H:%M:%S’)] dat 更新完成”
+XRAY_DAT_DIR="/usr/local/share/xray"
+GEOIP_URL="https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat"
+GEOSITE_URL="https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat"
+mkdir -p "$XRAY_DAT_DIR" && cd "$XRAY_DAT_DIR"
+echo "[$(date ‘+%Y-%m-%d %H:%M:%S’)] 更新 geoip.dat…"
+curl -fsSL -o geoip.dat.new   "$GEOIP_URL"   && mv -f geoip.dat.new   geoip.dat
+echo "[$(date ‘+%Y-%m-%d %H:%M:%S’)] 更新 geosite.dat…"
+curl -fsSL -o geosite.dat.new "$GEOSITE_URL" && mv -f geosite.dat.new geosite.dat
+echo "[$(date ‘+%Y-%m-%d %H:%M:%S’)] dat 更新完成"
 systemctl -q is-active xray && systemctl restart xray   
-&& echo “[$(date ‘+%Y-%m-%d %H:%M:%S’)] Xray 已重启”
+&& echo "[$(date ‘+%Y-%m-%d %H:%M:%S’)] Xray 已重启"
 UPDSH
-chmod +x “$UPDATE_DAT_SCRIPT”
-local job=“0 3 * * * $UPDATE_DAT_SCRIPT >> $LOG_DIR/update-dat.log 2>&1”
-if ! crontab -l 2>/dev/null | grep -qF “$UPDATE_DAT_SCRIPT”; then
-(crontab -l 2>/dev/null; echo “$job”) | crontab -
-info “cron 任务已添加：每天 03:00 自动更新 dat”
+chmod +x "$UPDATE_DAT_SCRIPT"
+local job="0 3 * * * $UPDATE_DAT_SCRIPT >> $LOG_DIR/update-dat.log 2>&1"
+if ! crontab -l 2>/dev/null | grep -qF "$UPDATE_DAT_SCRIPT"; then
+(crontab -l 2>/dev/null; echo "$job") | crontab -
+info "cron 任务已添加：每天 03:00 自动更新 dat"
 else
-info “cron 任务已存在”
+info "cron 任务已存在"
 fi
 }
 
 # – 立即下载 dat ——————————————
 
 download_dat_now() {
-mkdir -p “$DAT_DIR”
-msg warn “下载 geoip.dat…”
-if curl -fsSL -o “$DAT_DIR/geoip.dat.new” “$GEOIP_URL”; then
-mv -f “$DAT_DIR/geoip.dat.new” “$DAT_DIR/geoip.dat”
-msg ok “geoip.dat 完成”
+mkdir -p "$DAT_DIR"
+msg warn "下载 geoip.dat…"
+if curl -fsSL -o "$DAT_DIR/geoip.dat.new" "$GEOIP_URL"; then
+mv -f "$DAT_DIR/geoip.dat.new" "$DAT_DIR/geoip.dat"
+msg ok "geoip.dat 完成"
 else
-error “geoip.dat 下载失败”
+error "geoip.dat 下载失败"
 fi
-msg warn “下载 geosite.dat…”
-if curl -fsSL -o “$DAT_DIR/geosite.dat.new” “$GEOSITE_URL”; then
-mv -f “$DAT_DIR/geosite.dat.new” “$DAT_DIR/geosite.dat”
-msg ok “geosite.dat 完成”
+msg warn "下载 geosite.dat…"
+if curl -fsSL -o "$DAT_DIR/geosite.dat.new" "$GEOSITE_URL"; then
+mv -f "$DAT_DIR/geosite.dat.new" "$DAT_DIR/geosite.dat"
+msg ok "geosite.dat 完成"
 else
-error “geosite.dat 下载失败”
+error "geosite.dat 下载失败"
 fi
 }
 
@@ -316,46 +316,46 @@ fi
 # 用法: _gen_vless_config port uuid priv pub sid dest sni
 
 _gen_vless_config() {
-local port=”$1” uuid=”$2” priv=”$3” pub=”$4” sid=”$5” dest=”$6” sni=”$7”
-mkdir -p “$CONFIG_DIR”
-cat > “$CONFIG” <<EOF
+local port="$1" uuid="$2" priv="$3" pub="$4" sid="$5" dest="$6" sni="$7"
+mkdir -p "$CONFIG_DIR"
+cat > "$CONFIG" <<EOF
 {
-“log”: { “loglevel”: “warning” },
-“routing”: {
-“domainStrategy”: “IPIfNonMatch”,
-“rules”: [
-{“tag_id”:“bt”,  “type”:“field”,“protocol”:[“bittorrent”],“outboundTag”:“block”,”_enabled”:true},
-{“tag_id”:“cn”,  “type”:“field”,“ip”:[“geoip:cn”],        “outboundTag”:“block”,”_enabled”:true},
-{“tag_id”:“ads”, “type”:“field”,“domain”:[“geosite:category-ads-all”],“outboundTag”:“block”,”_enabled”:true}
+"log": { "loglevel": "warning" },
+"routing": {
+"domainStrategy": "IPIfNonMatch",
+"rules": [
+{"tag_id":"bt",  "type":"field","protocol":["bittorrent"],"outboundTag":"block","_enabled":true},
+{"tag_id":"cn",  "type":"field","ip":["geoip:cn"],        "outboundTag":"block","_enabled":true},
+{"tag_id":"ads", "type":"field","domain":["geosite:category-ads-all"],"outboundTag":"block","_enabled":true}
 ]
 },
-“inbounds”: [
+"inbounds": [
 {
-“tag”: “vless-reality”,
-“listen”: “0.0.0.0”,
-“port”: ${port},
-“protocol”: “vless”,
-“settings”: {
-“clients”: [{“id”:”${uuid}”,“flow”:“xtls-rprx-vision”}],
-“decryption”: “none”
+"tag": "vless-reality",
+"listen": "0.0.0.0",
+"port": ${port},
+"protocol": "vless",
+"settings": {
+"clients": [{"id":"${uuid}","flow":"xtls-rprx-vision"}],
+"decryption": "none"
 },
-“streamSettings”: {
-“network”: “tcp”,
-“security”: “reality”,
-“realitySettings”: {
-“dest”: “${dest}:443”,
-“serverNames”: [”${sni}”],
-“privateKey”: “${priv}”,
-“publicKey”: “${pub}”,
-“shortIds”: [”${sid}”]
+"streamSettings": {
+"network": "tcp",
+"security": "reality",
+"realitySettings": {
+"dest": "${dest}:443",
+"serverNames": ["${sni}"],
+"privateKey": "${priv}",
+"publicKey": "${pub}",
+"shortIds": ["${sid}"]
 }
 },
-“sniffing”: {“enabled”:true,“destOverride”:[“http”,“tls”,“quic”]}
+"sniffing": {"enabled":true,"destOverride":["http","tls","quic"]}
 }
 ],
-“outbounds”: [
-{“protocol”:“freedom”,“tag”:“direct”},
-{“protocol”:“blackhole”,“tag”:“block”}
+"outbounds": [
+{"protocol":"freedom","tag":"direct"},
+{"protocol":"blackhole","tag":"block"}
 ]
 }
 EOF
@@ -364,46 +364,21 @@ EOF
 # – 生成纯 SS config.json ———————————
 
 _gen_ss_config() {
-local port=”$1” pass=”$2” method=”$3”
-mkdir -p “$CONFIG_DIR”
-cat > “$CONFIG” <<EOF
+local port="$1" pass="$2" method="$3"
+mkdir -p "$CONFIG_DIR"
+cat > "$CONFIG" <<EOF
 {
-“log”: { “loglevel”: “warning” },
-“routing”: {
-“domainStrategy”: “IPIfNonMatch”,
-“rules”: [
-{“tag_id”:“bt”,  “type”:“field”,“protocol”:[“bittorrent”],“outboundTag”:“block”,”_enabled”:true},
-{“tag_id”:“cn”,  “type”:“field”,“ip”:[“geoip:cn”],        “outboundTag”:“block”,”_enabled”:true},
-{“tag_id”:“ads”, “type”:“field”,“domain”:[“geosite:category-ads-all”],“outboundTag”:“block”,”_enabled”:true}
+"log": { "loglevel": "warning" },
+"routing": {
+"domainStrategy": "IPIfNonMatch",
+"rules": [
+{"tag_id":"bt",  "type":"field","protocol":["bittorrent"],"outboundTag":"block","_enabled":true},
+{"tag_id":"cn",  "type":"field","ip":["geoip:cn"],        "outboundTag":"block","_enabled":true},
+{"tag_id":"ads", "type":"field","domain":["geosite:category-ads-all"],"outboundTag":"block","_enabled":true}
 ]
 },
-“inbounds”: [
+"inbounds": [
 {
-“tag”: “shadowsocks”,
-“listen”: “0.0.0.0”,
-“port”: ${port},
-“protocol”: “shadowsocks”,
-“settings”: {
-“method”: “${method}”,
-“password”: “${pass}”,
-“network”: “tcp,udp”
-}
-}
-],
-“outbounds”: [
-{“protocol”:“freedom”,“tag”:“direct”},
-{“protocol”:“blackhole”,“tag”:“block”}
-]
-}
-EOF
-}
-
-# – 追加 SS inbound —————————————
-
-_append_ss_inbound() {
-local port=”$1” pass=”$2” method=”$3”
-_safe_jq_write   
-“.inbounds += [{
 "tag": "shadowsocks",
 "listen": "0.0.0.0",
 "port": ${port},
@@ -413,18 +388,43 @@ _safe_jq_write
 "password": "${pass}",
 "network": "tcp,udp"
 }
-}]”
+}
+],
+"outbounds": [
+{"protocol":"freedom","tag":"direct"},
+{"protocol":"blackhole","tag":"block"}
+]
+}
+EOF
+}
+
+# – 追加 SS inbound —————————————
+
+_append_ss_inbound() {
+local port="$1" pass="$2" method="$3"
+_safe_jq_write   
+".inbounds += [{
+"tag": "shadowsocks",
+"listen": "0.0.0.0",
+"port": ${port},
+"protocol": "shadowsocks",
+"settings": {
+"method": "${method}",
+"password": "${pass}",
+"network": "tcp,udp"
+}
+}]"
 }
 
 # – 打印 VLESS 链接 —————————————
 
 print_vless_link() {
-local uuid=”$1” port=”$2” sni=”$3” priv=”$4” sid=”$5” label=”${6:-xray-reality}”
+local uuid="$1" port="$2" sni="$3" priv="$4" sid="$5" label="${6:-xray-reality}"
 # 优先从 config 读取已存储的公钥，否则实时推导
 local pub
-pub=$(jq -r ‘.inbounds[]? | select(.protocol==“vless”) | .streamSettings.realitySettings.publicKey // “”’   
-“$CONFIG” 2>/dev/null | head -1)
-[[ -z “$pub” ]] && pub=$(derive_pubkey “$priv”)
+pub=$(jq -r ‘.inbounds[]? | select(.protocol=="vless") | .streamSettings.realitySettings.publicKey // ""’   
+"$CONFIG" 2>/dev/null | head -1)
+[[ -z "$pub" ]] && pub=$(derive_pubkey "$priv")
 
 ```
 get_server_ip
@@ -456,44 +456,44 @@ hr
 # – 打印 SS 链接 ——————————————
 
 print_ss_link() {
-local pass=”$1” method=”$2” port=”$3” label=”${4:-xray-ss}”
+local pass="$1" method="$2" port="$3" label="${4:-xray-ss}"
 get_server_ip
-local b64; b64=$(printf ‘%s’ “${method}:${pass}” | base64 | tr -d ‘\n’)
-local link=“ss://${b64}@${SERVER_IP}:${port}#${label}”
+local b64; b64=$(printf ‘%s’ "${method}:${pass}" | base64 | tr -d ‘\n’)
+local link="ss://${b64}@${SERVER_IP}:${port}#${label}"
 hr
-_cyan “  Shadowsocks 连接参数”
+_cyan "  Shadowsocks 连接参数"
 hr
-printf “  ${yellow}%-16s${none} %s\n” “服务器 IP:”  “$SERVER_IP”
-printf “  ${yellow}%-16s${none} %s\n” “端口:”       “$port”
-printf “  ${yellow}%-16s${none} %s\n” “密码:”       “$pass”
-printf “  ${yellow}%-16s${none} %s\n” “加密方式:”   “$method”
+printf "  ${yellow}%-16s${none} %s\n" "服务器 IP:"  "$SERVER_IP"
+printf "  ${yellow}%-16s${none} %s\n" "端口:"       "$port"
+printf "  ${yellow}%-16s${none} %s\n" "密码:"       "$pass"
+printf "  ${yellow}%-16s${none} %s\n" "加密方式:"   "$method"
 hr
-echo “”
-_green “  ss:// 链接：”
-echo “”
-echo -e “  ${cyan}${link}${none}”
-echo “”
+echo ""
+_green "  ss:// 链接："
+echo ""
+echo -e "  ${cyan}${link}${none}"
+echo ""
 hr
 }
 
 # – 端口输入校验 ——————————————
 
 input_port() {
-local prompt=”$1” default=”${2:-}”
+local prompt="$1" default="${2:-}"
 local p
 while true; do
-if [[ -n “$default” ]]; then
-read -rp “${prompt} [${default}]: “ p
-[[ -z “$p” ]] && p=”$default”
+if [[ -n "$default" ]]; then
+read -rp "${prompt} [${default}]: " p
+[[ -z "$p" ]] && p="$default"
 else
-read -rp “${prompt}: “ p
+read -rp "${prompt}: " p
 fi
-if [[ “$p” =~ ^[0-9]+$ ]] && (( p >= 1 && p <= 65535 )); then
+if [[ "$p" =~ ^[0-9]+$ ]] && (( p >= 1 && p <= 65535 )); then
 break
 fi
-error “端口无效，范围 1-65535”
+error "端口无效，范围 1-65535"
 done
-echo “$p”
+echo "$p"
 }
 
 # – 域名输入校验 ——————————————
@@ -501,37 +501,37 @@ echo “$p”
 input_domain() {
 local d
 while true; do
-read -rp “输入目标域名（如 www.microsoft.com）: “ d
-[[ -n “$d” ]] && break
-error “域名不能为空”
+read -rp "输入目标域名（如 www.microsoft.com）: " d
+[[ -n "$d" ]] && break
+error "域名不能为空"
 done
-echo “$d”
+echo "$d"
 }
 
 # – SS 加密方式选择（独立函数，输出到变量避免 echo 污染）-
 
 _select_ss_method() {
 # 用全局变量传出，避免子 shell echo 污染
-echo “  选择 SS 加密方式：” >&2
-echo “  1) aes-256-gcm（推荐）” >&2
-echo “  2) aes-128-gcm” >&2
-echo “  3) chacha20-ietf-poly1305” >&2
-echo “  4) 2022-blake3-aes-256-gcm” >&2
+echo "  选择 SS 加密方式：" >&2
+echo "  1) aes-256-gcm（推荐）" >&2
+echo "  2) aes-128-gcm" >&2
+echo "  3) chacha20-ietf-poly1305" >&2
+echo "  4) 2022-blake3-aes-256-gcm" >&2
 local mc
-read -rp “  编号 [1]: “ mc >&2 || true
-case “${mc:-1}” in
-2) SS_METHOD=“aes-128-gcm” ;;
-3) SS_METHOD=“chacha20-ietf-poly1305” ;;
-4) SS_METHOD=“2022-blake3-aes-256-gcm” ;;
-*) SS_METHOD=“aes-256-gcm” ;;
+read -rp "  编号 [1]: " mc >&2 || true
+case "${mc:-1}" in
+2) SS_METHOD="aes-128-gcm" ;;
+3) SS_METHOD="chacha20-ietf-poly1305" ;;
+4) SS_METHOD="2022-blake3-aes-256-gcm" ;;
+*) SS_METHOD="aes-256-gcm" ;;
 esac
-echo “$SS_METHOD”
+echo "$SS_METHOD"
 }
 
 # – 打印所有协议链接 –––––––––––––––––––
 
 _print_all_links() {
-[[ ! -f “$CONFIG” ]] && return
+[[ ! -f "$CONFIG" ]] && return
 
 ```
 local vless_count
@@ -562,13 +562,13 @@ fi
 # – 获取 VLESS inbound 在 inbounds 数组里的索引 –––––
 
 _get_vless_idx() {
-jq ‘[.inbounds | to_entries[] | select(.value.protocol==“vless”)] | .[0].key’ “$CONFIG” 2>/dev/null
+jq ‘[.inbounds | to_entries[] | select(.value.protocol=="vless")] | .[0].key’ "$CONFIG" 2>/dev/null
 }
 
 # – 获取 SS inbound 在 inbounds 数组里的索引 ———––
 
 _get_ss_idx() {
-jq ‘[.inbounds | to_entries[] | select(.value.protocol==“shadowsocks”)] | .[0].key’ “$CONFIG” 2>/dev/null
+jq ‘[.inbounds | to_entries[] | select(.value.protocol=="shadowsocks")] | .[0].key’ "$CONFIG" 2>/dev/null
 }
 
 # +==========================================================+
@@ -578,7 +578,7 @@ jq ‘[.inbounds | to_entries[] | select(.value.protocol==“shadowsocks”)] | 
 # +==========================================================+
 
 do_install() {
-title “安装 / 重装 Xray”
+title "安装 / 重装 Xray"
 
 ```
 if systemctl is-active --quiet xray 2>/dev/null; then
@@ -689,15 +689,15 @@ hr
 
 _init_ss_config() {
 local port pass method
-port=$(input_port “SS 监听端口” “8388”)
+port=$(input_port "SS 监听端口" "8388")
 pass=$(gen_ss_pass)
 method=$(_select_ss_method)
-_gen_ss_config “$port” “$pass” “$method”
-msg ok “Shadowsocks 配置已生成”
+_gen_ss_config "$port" "$pass" "$method"
+msg ok "Shadowsocks 配置已生成"
 hr
-printf “  %-14s %s\n” “端口:”     “$port”
-printf “  %-14s %s\n” “密码:”     “$pass”
-printf “  %-14s %s\n” “加密方式:” “$method”
+printf "  %-14s %s\n" "端口:"     "$port"
+printf "  %-14s %s\n" "密码:"     "$pass"
+printf "  %-14s %s\n" "加密方式:" "$method"
 hr
 }
 
@@ -708,7 +708,7 @@ hr
 # +==========================================================+
 
 do_upgrade_core() {
-title “更新 Xray 核心”
+title "更新 Xray 核心"
 
 ```
 local cur_ver=""
@@ -766,15 +766,15 @@ read -rp "按 Enter 返回主菜单..." _
 # +==========================================================+
 
 do_update_dat() {
-title “立即更新 geo 规则”
-if [[ ! -f “$UPDATE_DAT_SCRIPT” ]]; then
-warn “update-dat.sh 不存在，正在创建…”
+title "立即更新 geo 规则"
+if [[ ! -f "$UPDATE_DAT_SCRIPT" ]]; then
+warn "update-dat.sh 不存在，正在创建…"
 install_update_dat
 fi
-bash “$UPDATE_DAT_SCRIPT”
-msg ok “dat 规则更新完成”
-echo “”
-read -rp “按 Enter 返回主菜单…” _
+bash "$UPDATE_DAT_SCRIPT"
+msg ok "dat 规则更新完成"
+echo ""
+read -rp "按 Enter 返回主菜单…" _
 }
 
 # +==========================================================+
@@ -785,30 +785,30 @@ read -rp “按 Enter 返回主菜单…” _
 
 do_status_menu() {
 while true; do
-title “查看运行状态”
-echo “  1) Xray 服务状态”
-echo “  2) 实时 IP 连接 & DNS 管理”
-echo “  3) 流量统计（vnstat）”
-echo “  f) 返回主菜单”
+title "查看运行状态"
+echo "  1) Xray 服务状态"
+echo "  2) 实时 IP 连接 & DNS 管理"
+echo "  3) 流量统计（vnstat）"
+echo "  f) 返回主菜单"
 hr
-read -rp “选择: “ s
-case “$s” in
+read -rp "选择: " s
+case "$s" in
 1) systemctl status xray –no-pager || true ;;
 2) _status_ip_dns ;;
 3) _status_traffic ;;
 f|F|0) return ;;
-*) warn “无效选项” ;;
+*) warn "无效选项" ;;
 esac
-echo “”
-read -rp “按 Enter 继续…” _
+echo ""
+read -rp "按 Enter 继续…" _
 done
 }
 
 _status_ip_dns() {
-title “IP 连接 & DNS 信息”
+title "IP 连接 & DNS 信息"
 get_server_ip
-echo “”
-printf “  ${yellow}%-18s${none} %s\n” “服务器公网 IP:” “$SERVER_IP”
+echo ""
+printf "  ${yellow}%-18s${none} %s\n" "服务器公网 IP:" "$SERVER_IP"
 
 ```
 echo ""
@@ -869,13 +869,13 @@ esac
 }
 
 _status_traffic() {
-title “流量统计”
+title "流量统计"
 if ! command -v vnstat &>/dev/null; then
-warn “vnstat 未安装，正在自动安装…”
+warn "vnstat 未安装，正在自动安装…"
 install_pkg vnstat
 systemctl enable vnstat &>/dev/null
 systemctl start vnstat &>/dev/null
-msg ok “vnstat 已安装并启动（需收集一段时间数据后方可显示统计）”
+msg ok "vnstat 已安装并启动（需收集一段时间数据后方可显示统计）"
 fi
 
 ```
@@ -952,52 +952,52 @@ esac
 
 do_user_menu() {
 while true; do
-title “用户管理”
+title "用户管理"
 if ! check_config; then
-read -rp “按 Enter 返回…” _; return
+read -rp "按 Enter 返回…" _; return
 fi
-echo “  1) 查看用户”
-echo “  2) 新增用户”
-echo “  3) 修改用户”
-echo “  4) 删除用户”
-echo “  f) 返回主菜单”
+echo "  1) 查看用户"
+echo "  2) 新增用户"
+echo "  3) 修改用户"
+echo "  4) 删除用户"
+echo "  f) 返回主菜单"
 hr
-read -rp “选择: “ u
-case “$u” in
+read -rp "选择: " u
+case "$u" in
 1) _list_users  ;;
 2) _add_user    ;;
 3) _modify_user ;;
 4) _delete_user ;;
 f|F|0) return   ;;
-*) warn “无效选项” ;;
+*) warn "无效选项" ;;
 esac
-echo “”
-read -rp “按 Enter 继续…” _
+echo ""
+read -rp "按 Enter 继续…" _
 done
 }
 
 _vless_client_count() {
-jq ‘[.inbounds[]? | select(.protocol==“vless”) | .settings.clients[]?] | length’   
-“$CONFIG” 2>/dev/null || echo 0
+jq ‘[.inbounds[]? | select(.protocol=="vless") | .settings.clients[]?] | length’   
+"$CONFIG" 2>/dev/null || echo 0
 }
 
 _list_users() {
-title “当前 VLESS 用户”
+title "当前 VLESS 用户"
 local count; count=$(_vless_client_count)
-if [[ “$count” -eq 0 ]]; then
-warn “暂无用户”; return 1
+if [[ "$count" -eq 0 ]]; then
+warn "暂无用户"; return 1
 fi
-printf “  ${cyan}%-4s %-38s %-20s${none}\n” “No.” “UUID” “Flow”
+printf "  ${cyan}%-4s %-38s %-20s${none}\n" "No." "UUID" "Flow"
 hr
-jq -r ‘.inbounds[]? | select(.protocol==“vless”) | .settings.clients[]? | “(.id) (.flow // “无”)”’   
-“$CONFIG” 2>/dev/null | awk ‘{printf “  %-4d %-38s %-20s\n”, NR, $1, $2}’
+jq -r ‘.inbounds[]? | select(.protocol=="vless") | .settings.clients[]? | "(.id) (.flow // "无")"’   
+"$CONFIG" 2>/dev/null | awk ‘{printf "  %-4d %-38s %-20s\n", NR, $1, $2}’
 hr
-info “共 $count 个用户”
+info "共 $count 个用户"
 return 0
 }
 
 _add_user() {
-title “新增 VLESS 用户”
+title "新增 VLESS 用户"
 
 ```
 # 可选修改端口
@@ -1040,7 +1040,7 @@ print_vless_link "$uuid" "$v_port" "$v_sni" "$v_priv" "$sid"
 }
 
 _modify_user() {
-title “修改 VLESS 用户”
+title "修改 VLESS 用户"
 _list_users || return
 local count; count=$(_vless_client_count)
 
@@ -1077,7 +1077,7 @@ info "修改完成 — UUID: $new_uuid"
 }
 
 _delete_user() {
-title “删除 VLESS 用户”
+title "删除 VLESS 用户"
 _list_users || return
 local count; count=$(_vless_client_count)
 
@@ -1111,70 +1111,70 @@ info "已删除用户 #${sel}: $del_uuid"
 
 do_global_menu() {
 while true; do
-title “全局配置管理”
+title "全局配置管理"
 if ! check_config; then
-read -rp “按 Enter 返回…” _; return
+read -rp "按 Enter 返回…" _; return
 fi
-echo “  1) 修改监听端口”
-echo “  2) 修改目标域名 / SNI”
-echo “  3) 重新生成 x25519 密钥对”
-echo “  4) 重新生成 Short ID”
-echo “  5) Block 规则独立开关（BT / CN-IP / 广告）”
-echo “  6) 查看完整配置文件”
-echo “  7) 还原配置备份”
-echo “  f) 返回主菜单”
+echo "  1) 修改监听端口"
+echo "  2) 修改目标域名 / SNI"
+echo "  3) 重新生成 x25519 密钥对"
+echo "  4) 重新生成 Short ID"
+echo "  5) Block 规则独立开关（BT / CN-IP / 广告）"
+echo "  6) 查看完整配置文件"
+echo "  7) 还原配置备份"
+echo "  f) 返回主菜单"
 hr
-read -rp “选择: “ g
-case “$g” in
+read -rp "选择: " g
+case "$g" in
 1) _global_port        ;;
 2) _global_domain      ;;
 3) _global_regen_key   ;;
 4) _global_regen_sid   ;;
 5) _global_block_rules ;;
-6) jq . “$CONFIG”      ;;
+6) jq . "$CONFIG"      ;;
 7) _restore_backup     ;;
 f|F|0) return          ;;
-*) warn “无效选项”     ;;
+*) warn "无效选项"     ;;
 esac
-echo “”
-read -rp “按 Enter 继续…” _
+echo ""
+read -rp "按 Enter 继续…" _
 done
 }
 
 _global_port() {
 local vidx; vidx=$(_get_vless_idx)
-local cur; cur=$(jq -r “.inbounds[$vidx].port” “$CONFIG”)
-echo “  当前 VLESS 端口: ${yellow}${cur}${none}”
-local np; np=$(input_port “新端口” “$cur”)
-_safe_jq_write “.inbounds[$vidx].port = $np” || return
+local cur; cur=$(jq -r ".inbounds[$vidx].port" "$CONFIG")
+echo "  当前 VLESS 端口: ${yellow}${cur}${none}"
+local np; np=$(input_port "新端口" "$cur")
+_safe_jq_write ".inbounds[$vidx].port = $np" || return
 systemctl restart xray
-info “端口已更改: $cur → $np”
+info "端口已更改: $cur → $np"
 }
 
 _global_domain() {
 local vidx; vidx=$(_get_vless_idx)
 local cur_dest cur_sni
-cur_dest=$(jq -r “.inbounds[$vidx].streamSettings.realitySettings.dest” “$CONFIG”)
-cur_sni=$(jq -r “.inbounds[$vidx].streamSettings.realitySettings.serverNames[0]” “$CONFIG”)
-echo “  当前目标域名: ${yellow}${cur_dest}${none}”
-echo “  当前 SNI:     ${yellow}${cur_sni}${none}”
-echo “”
+cur_dest=$(jq -r ".inbounds[$vidx].streamSettings.realitySettings.dest" "$CONFIG")
+cur_sni=$(jq -r ".inbounds[$vidx].streamSettings.realitySettings.serverNames[0]" "$CONFIG")
+echo "  当前目标域名: ${yellow}${cur_dest}${none}"
+echo "  当前 SNI:     ${yellow}${cur_sni}${none}"
+echo ""
 local nd; nd=$(input_domain)
-read -rp “SNI（留空同域名 [$nd]）: “ ns
-[[ -z “$ns” ]] && ns=”$nd”
+read -rp "SNI（留空同域名 [$nd]）: " ns
+[[ -z "$ns" ]] && ns="$nd"
 _safe_jq_write   
-“.inbounds[$vidx].streamSettings.realitySettings.dest = "${nd}:443" |
-.inbounds[$vidx].streamSettings.realitySettings.serverNames = ["$ns"]” || return
+".inbounds[$vidx].streamSettings.realitySettings.dest = "${nd}:443" |
+.inbounds[$vidx].streamSettings.realitySettings.serverNames = ["$ns"]" || return
 systemctl restart xray
-info “域名已更新 → $nd:443 | SNI: $ns”
+info "域名已更新 → $nd:443 | SNI: $ns"
 }
 
 _global_regen_key() {
 local vidx; vidx=$(_get_vless_idx)
-[[ ! -x “$XRAY_BIN” ]] && error “xray 二进制不存在” && return
-warn “重新生成密钥后，所有客户端需同步更新公钥！”
-read -rp “确认? [y/N]: “ c
-[[ “$c” != “y” ]] && warn “已取消” && return
+[[ ! -x "$XRAY_BIN" ]] && error "xray 二进制不存在" && return
+warn "重新生成密钥后，所有客户端需同步更新公钥！"
+read -rp "确认? [y/N]: " c
+[[ "$c" != "y" ]] && warn "已取消" && return
 
 ```
 gen_x25519   # 写入 X25519_PRIV / X25519_PUB
@@ -1196,30 +1196,30 @@ warn "请将公钥更新到所有客户端！"
 _global_regen_sid() {
 local vidx; vidx=$(_get_vless_idx)
 local cur_ids
-cur_ids=$(jq -r “.inbounds[$vidx].streamSettings.realitySettings.shortIds | join(", ")” “$CONFIG” 2>/dev/null)
-echo “  当前 Short IDs: ${yellow}${cur_ids}${none}”
-echo “”
-echo “  1) 追加一个新 Short ID”
-echo “  2) 替换全部 Short ID（重置）”
-echo “  0) 取消”
-read -rp “选择: “ opt
+cur_ids=$(jq -r ".inbounds[$vidx].streamSettings.realitySettings.shortIds | join(", ")" "$CONFIG" 2>/dev/null)
+echo "  当前 Short IDs: ${yellow}${cur_ids}${none}"
+echo ""
+echo "  1) 追加一个新 Short ID"
+echo "  2) 替换全部 Short ID（重置）"
+echo "  0) 取消"
+read -rp "选择: " opt
 local new_sid; new_sid=$(gen_short_id)
-case “$opt” in
+case "$opt" in
 1)
 _safe_jq_write   
-“.inbounds[$vidx].streamSettings.realitySettings.shortIds += ["$new_sid"]” || return
-info “已追加 Short ID: $new_sid”
+".inbounds[$vidx].streamSettings.realitySettings.shortIds += ["$new_sid"]" || return
+info "已追加 Short ID: $new_sid"
 ;;
 2)
-warn “替换后客户端需同步更新 Short ID”
-read -rp “确认? [y/N]: “ c
-[[ “$c” != “y” ]] && warn “已取消” && return
+warn "替换后客户端需同步更新 Short ID"
+read -rp "确认? [y/N]: " c
+[[ "$c" != "y" ]] && warn "已取消" && return
 _safe_jq_write   
-“.inbounds[$vidx].streamSettings.realitySettings.shortIds = ["$new_sid"]” || return
-info “Short ID 已重置: $new_sid”
+".inbounds[$vidx].streamSettings.realitySettings.shortIds = ["$new_sid"]" || return
+info "Short ID 已重置: $new_sid"
 ;;
-0) warn “已取消”; return ;;
-*) warn “无效选项”; return ;;
+0) warn "已取消"; return ;;
+*) warn "无效选项"; return ;;
 esac
 systemctl restart xray
 }
@@ -1227,12 +1227,12 @@ systemctl restart xray
 # Block 规则独立开关
 
 _global_block_rules() {
-title “Block 规则独立开关”
+title "Block 规则独立开关"
 while true; do
 local bt_en cn_en ads_en
-bt_en=$(jq -r  ‘.routing.rules[]? | select(.tag_id==“bt”)  | ._enabled’ “$CONFIG” 2>/dev/null || echo “false”)
-cn_en=$(jq -r  ‘.routing.rules[]? | select(.tag_id==“cn”)  | ._enabled’ “$CONFIG” 2>/dev/null || echo “false”)
-ads_en=$(jq -r ‘.routing.rules[]? | select(.tag_id==“ads”) | ._enabled’ “$CONFIG” 2>/dev/null || echo “false”)
+bt_en=$(jq -r  ‘.routing.rules[]? | select(.tag_id=="bt")  | ._enabled’ "$CONFIG" 2>/dev/null || echo "false")
+cn_en=$(jq -r  ‘.routing.rules[]? | select(.tag_id=="cn")  | ._enabled’ "$CONFIG" 2>/dev/null || echo "false")
+ads_en=$(jq -r ‘.routing.rules[]? | select(.tag_id=="ads") | ._enabled’ "$CONFIG" 2>/dev/null || echo "false")
 
 ```
     local s_bt s_cn s_ads
@@ -1268,33 +1268,33 @@ done
 
 *restore_backup() {
 local backups
-backups=$(ls -t “${CONFIG}.bak.”* 2>/dev/null || true)
-if [[ -z “$backups” ]]; then
-warn “没有找到任何备份文件”; return
+backups=$(ls -t "${CONFIG}.bak."* 2>/dev/null || true)
+if [[ -z "$backups" ]]; then
+warn "没有找到任何备份文件"; return
 fi
-echo “  可用备份（从新到旧）：”
+echo "  可用备份（从新到旧）："
 hr
 local i=1
 local bak_list=()
 while IFS= read -r bak; do
-local bt; bt=$(stat -c “%y” “$bak” 2>/dev/null | cut -d’.’ -f1 || echo “未知”)
-printf “  ${cyan}%d${none}. %-45s [%s]\n” “$i” “$(basename “$bak”)” “$bt”
-bak_list+=(”$bak”)
+local bt; bt=$(stat -c "%y" "$bak" 2>/dev/null | cut -d’.’ -f1 || echo "未知")
+printf "  ${cyan}%d${none}. %-45s [%s]\n" "$i" "$(basename "$bak")" "$bt"
+bak_list+=("$bak")
 ((i++))
-done <<< “$backups”
+done <<< "$backups"
 hr
-read -rp “选择序号（留空取消）: “ sel
-[[ -z “$sel” ]] && warn “已取消” && return
-if ! [[ “$sel” =~ ^[0-9]+$ ]] || (( sel < 1 || sel > ${#bak_list[@]} )); then
-error “无效序号”; return
+read -rp "选择序号（留空取消）: " sel
+[[ -z "$sel" ]] && warn "已取消" && return
+if ! [[ "$sel" =~ ^[0-9]+$ ]] || (( sel < 1 || sel > ${#bak_list[@]} )); then
+error "无效序号"; return
 fi
-local chosen=”${bak_list[$((sel-1))]}”
-read -rp “确认还原 $(basename “$chosen”)? [y/N]: “ c
-[[ “$c” != “y” ]] && warn “已取消” && return
-cp “$CONFIG” “${CONFIG}.before_restore.$(date +%Y%m%d*%H%M%S)”
-cp “$chosen” “$CONFIG”
+local chosen="${bak_list[$((sel-1))]}"
+read -rp "确认还原 $(basename "$chosen")? [y/N]: " c
+[[ "$c" != "y" ]] && warn "已取消" && return
+cp "$CONFIG" "${CONFIG}.before_restore.$(date +%Y%m%d*%H%M%S)"
+cp "$chosen" "$CONFIG"
 systemctl restart xray
-info “已还原并重启 Xray”
+info "已还原并重启 Xray"
 }
 
 # +==========================================================+
@@ -1304,9 +1304,9 @@ info “已还原并重启 Xray”
 # +==========================================================+
 
 do_summary() {
-title “配置摘要”
-if [[ ! -f “$CONFIG” ]]; then
-warn “配置文件不存在”; return
+title "配置摘要"
+if [[ ! -f "$CONFIG" ]]; then
+warn "配置文件不存在"; return
 fi
 
 ```
@@ -1385,7 +1385,7 @@ hr
 # +==========================================================+
 
 do_export() {
-title “导出用户配置”
+title "导出用户配置"
 check_config || return
 _list_users || return
 local count; count=$(_vless_client_count)
@@ -1450,26 +1450,26 @@ read -rp "按 Enter 返回主菜单..." _
 
 do_protocol_menu() {
 while true; do
-title “协议管理 — Shadowsocks”
+title "协议管理 — Shadowsocks"
 if ! check_config; then
-read -rp “按 Enter 返回…” _; return
+read -rp "按 Enter 返回…" _; return
 fi
 local ss_exists
-ss_exists=$(jq ‘[.inbounds[]? | select(.protocol==“shadowsocks”)] | length’ “$CONFIG” 2>/dev/null || echo 0)
+ss_exists=$(jq ‘[.inbounds[]? | select(.protocol=="shadowsocks")] | length’ "$CONFIG" 2>/dev/null || echo 0)
 local ss_status
-[[ “$ss_exists” -gt 0 ]] && ss_status=”${green}已启用${none}” || ss_status=”${red}未启用${none}”
-echo -e “  Shadowsocks 状态: $ss_status”
-echo “”
-echo “  1) 添加 / 重新配置 Shadowsocks”
-echo “  2) 查看 SS 连接信息”
-echo “  3) 修改 SS 密码”
-echo “  4) 修改 SS 端口”
-echo “  5) 修改 SS 加密方式”
-echo “  6) 删除 Shadowsocks”
-echo “  f) 返回主菜单”
+[[ "$ss_exists" -gt 0 ]] && ss_status="${green}已启用${none}" || ss_status="${red}未启用${none}"
+echo -e "  Shadowsocks 状态: $ss_status"
+echo ""
+echo "  1) 添加 / 重新配置 Shadowsocks"
+echo "  2) 查看 SS 连接信息"
+echo "  3) 修改 SS 密码"
+echo "  4) 修改 SS 端口"
+echo "  5) 修改 SS 加密方式"
+echo "  6) 删除 Shadowsocks"
+echo "  f) 返回主菜单"
 hr
-read -rp “选择: “ p
-case “$p” in
+read -rp "选择: " p
+case "$p" in
 1) _proto_add_ss    ;;
 2) _proto_show_ss   ;;
 3) _proto_ss_pass   ;;
@@ -1477,80 +1477,80 @@ case “$p” in
 5) _proto_ss_method ;;
 6) _proto_del_ss    ;;
 f|F|0) return       ;;
-*) warn “无效选项”  ;;
+*) warn "无效选项"  ;;
 esac
-echo “”
-read -rp “按 Enter 继续…” _
+echo ""
+read -rp "按 Enter 继续…" _
 done
 }
 
 _proto_add_ss() {
 local ss_exists
-ss_exists=$(jq ‘[.inbounds[]? | select(.protocol==“shadowsocks”)] | length’ “$CONFIG” 2>/dev/null || echo 0)
-if [[ “$ss_exists” -gt 0 ]]; then
-warn “Shadowsocks 已存在，将重新配置”
-_safe_jq_write ‘del(.inbounds[] | select(.protocol==“shadowsocks”))’ || return
+ss_exists=$(jq ‘[.inbounds[]? | select(.protocol=="shadowsocks")] | length’ "$CONFIG" 2>/dev/null || echo 0)
+if [[ "$ss_exists" -gt 0 ]]; then
+warn "Shadowsocks 已存在，将重新配置"
+_safe_jq_write ‘del(.inbounds[] | select(.protocol=="shadowsocks"))’ || return
 fi
 local port pass method
-port=$(input_port “SS 监听端口” “8388”)
+port=$(input_port "SS 监听端口" "8388")
 pass=$(gen_ss_pass)
 method=$(_select_ss_method)
-_append_ss_inbound “$port” “$pass” “$method” || return
+_append_ss_inbound "$port" "$pass" "$method" || return
 systemctl restart xray
-info “Shadowsocks 已配置”
-print_ss_link “$pass” “$method” “$port”
+info "Shadowsocks 已配置"
+print_ss_link "$pass" "$method" "$port"
 }
 
 _proto_show_ss() {
-local sc; sc=$(jq ‘[.inbounds[]? | select(.protocol==“shadowsocks”)] | length’ “$CONFIG” 2>/dev/null || echo 0)
-[[ “$sc” -eq 0 ]] && warn “Shadowsocks 未配置” && return
+local sc; sc=$(jq ‘[.inbounds[]? | select(.protocol=="shadowsocks")] | length’ "$CONFIG" 2>/dev/null || echo 0)
+[[ "$sc" -eq 0 ]] && warn "Shadowsocks 未配置" && return
 local sidx; sidx=$(_get_ss_idx)
 local s_port s_pass s_method
-s_port=$(jq -r “.inbounds[$sidx].port” “$CONFIG”)
-s_pass=$(jq -r “.inbounds[$sidx].settings.password” “$CONFIG”)
-s_method=$(jq -r “.inbounds[$sidx].settings.method” “$CONFIG”)
-print_ss_link “$s_pass” “$s_method” “$s_port”
+s_port=$(jq -r ".inbounds[$sidx].port" "$CONFIG")
+s_pass=$(jq -r ".inbounds[$sidx].settings.password" "$CONFIG")
+s_method=$(jq -r ".inbounds[$sidx].settings.method" "$CONFIG")
+print_ss_link "$s_pass" "$s_method" "$s_port"
 }
 
 _proto_ss_pass() {
-local sc; sc=$(jq ‘[.inbounds[]? | select(.protocol==“shadowsocks”)] | length’ “$CONFIG” 2>/dev/null || echo 0)
-[[ “$sc” -eq 0 ]] && warn “Shadowsocks 未配置” && return
+local sc; sc=$(jq ‘[.inbounds[]? | select(.protocol=="shadowsocks")] | length’ "$CONFIG" 2>/dev/null || echo 0)
+[[ "$sc" -eq 0 ]] && warn "Shadowsocks 未配置" && return
 local new_pass; new_pass=$(gen_ss_pass)
 local sidx; sidx=$(_get_ss_idx)
-_safe_jq_write “.inbounds[$sidx].settings.password = "$new_pass"” || return
+_safe_jq_write ".inbounds[$sidx].settings.password = "$new_pass"" || return
 systemctl restart xray
-info “SS 密码已更新: $new_pass”
+info "SS 密码已更新: $new_pass"
 }
 
 _proto_ss_port() {
-local sc; sc=$(jq ‘[.inbounds[]? | select(.protocol==“shadowsocks”)] | length’ “$CONFIG” 2>/dev/null || echo 0)
-[[ “$sc” -eq 0 ]] && warn “Shadowsocks 未配置” && return
+local sc; sc=$(jq ‘[.inbounds[]? | select(.protocol=="shadowsocks")] | length’ "$CONFIG" 2>/dev/null || echo 0)
+[[ "$sc" -eq 0 ]] && warn "Shadowsocks 未配置" && return
 local sidx; sidx=$(_get_ss_idx)
-local cur_port; cur_port=$(jq -r “.inbounds[$sidx].port” “$CONFIG”)
-local np; np=$(input_port “新端口” “$cur_port”)
-_safe_jq_write “.inbounds[$sidx].port = $np” || return
+local cur_port; cur_port=$(jq -r ".inbounds[$sidx].port" "$CONFIG")
+local np; np=$(input_port "新端口" "$cur_port")
+_safe_jq_write ".inbounds[$sidx].port = $np" || return
 systemctl restart xray
-info “SS 端口已更改: $cur_port → $np”
+info "SS 端口已更改: $cur_port → $np"
 }
 
 _proto_ss_method() {
-local sc; sc=$(jq ‘[.inbounds[]? | select(.protocol==“shadowsocks”)] | length’ “$CONFIG” 2>/dev/null || echo 0)
-[[ “$sc” -eq 0 ]] && warn “Shadowsocks 未配置” && return
+local sc; sc=$(jq ‘[.inbounds[]? | select(.protocol=="shadowsocks")] | length’ "$CONFIG" 2>/dev/null || echo 0)
+[[ "$sc" -eq 0 ]] && warn "Shadowsocks 未配置" && return
 local method; method=$(_select_ss_method)
 local sidx; sidx=$(_get_ss_idx)
-_safe_jq_write “.inbounds[$sidx].settings.method = "$method"” || return
+_safe_jq_write ".inbounds[$sidx].settings.method = "$method"" || return
 systemctl restart xray
-info “SS 加密方式已更改为: $method”
+info "SS 加密方式已更改为: $method"
 }
 
 _proto_del_ss() {
-local sc; sc=$(jq ‘[.inbounds[]? | select(.protocol==“shadowsocks”)] | length’ “$CONFIG” 2>/dev/null || echo 0)
-[[ “$sc” -eq 0 ]] && warn “Shadowsocks 未配置” && return
-read -rp “确认删除 Shadowsocks? [y/N]: “ c
-[[ “$c” != “y” ]] && warn “已取消” && return
-_safe_jq_write ‘del(.inbounds[] | select(.protocol==“shadowsocks”))’ || return
+local sc; sc=$(jq ‘[.inbounds[]? | select(.protocol=="shadowsocks")] | length’ "$CONFIG" 2>/dev/null || echo 0)
+[[ "$sc" -eq 0 ]] && warn "Shadowsocks 未配置" && return
+read -rp "确认删除 Shadowsocks? [y/N]: " c
+[[ "$c" != "y" ]] && warn "已取消" && return
+_safe_jq_write ‘del(.inbounds[] | select(.protocol=="shadowsocks"))’ || return
 systemctl restart xray
-info “Shadowsocks 已删除”
+info "Shadowsocks 已删除"
 }
 
 # +==========================================================+
@@ -1560,21 +1560,21 @@ info “Shadowsocks 已删除”
 # +==========================================================+
 
 do_quick_change() {
-title “一键更改”
+title "一键更改"
 check_config || return
-echo “  选择要更改的内容：”
-echo “  1) VLESS 端口”
-echo “  2) VLESS 用户 UUID”
-echo “  3) 目标域名 / SNI”
-echo “  4) Short ID（追加或重置）”
-echo “  5) x25519 密钥对”
-echo “  6) SS 密码”
-echo “  7) SS 端口”
-echo “  8) SS 加密方式”
-echo “  f) 返回主菜单”
+echo "  选择要更改的内容："
+echo "  1) VLESS 端口"
+echo "  2) VLESS 用户 UUID"
+echo "  3) 目标域名 / SNI"
+echo "  4) Short ID（追加或重置）"
+echo "  5) x25519 密钥对"
+echo "  6) SS 密码"
+echo "  7) SS 端口"
+echo "  8) SS 加密方式"
+echo "  f) 返回主菜单"
 hr
-read -rp “选择: “ qc
-case “$qc” in
+read -rp "选择: " qc
+case "$qc" in
 1) _global_port       ;;
 2) _modify_user       ;;
 3) _global_domain     ;;
@@ -1584,10 +1584,10 @@ case “$qc” in
 7) _proto_ss_port     ;;
 8) _proto_ss_method   ;;
 f|F|0) return         ;;
-*) warn “无效选项”    ;;
+*) warn "无效选项"    ;;
 esac
-echo “”
-read -rp “按 Enter 返回主菜单…” _
+echo ""
+read -rp "按 Enter 返回主菜单…" _
 }
 
 # +==========================================================+
@@ -1598,30 +1598,30 @@ read -rp “按 Enter 返回主菜单…” _
 
 do_xray_cmd_menu() {
 while true; do
-title “Xray 命令”
-echo “  1) 查看版本”
-echo “  2) 生成新 x25519 密钥对”
-echo “  3) 生成随机 UUID”
-echo “  4) 测试配置文件”
-echo “  5) 查看 Xray 日志（实时，Ctrl+C 退出）”
-echo “  6) 查看 Xray 错误日志”
-echo “  f) 返回主菜单”
+title "Xray 命令"
+echo "  1) 查看版本"
+echo "  2) 生成新 x25519 密钥对"
+echo "  3) 生成随机 UUID"
+echo "  4) 测试配置文件"
+echo "  5) 查看 Xray 日志（实时，Ctrl+C 退出）"
+echo "  6) 查看 Xray 错误日志"
+echo "  f) 返回主菜单"
 hr
-read -rp “选择: “ xc
-case “$xc” in
+read -rp "选择: " xc
+case "$xc" in
 1)
-[[ -x “$XRAY_BIN” ]] && “$XRAY_BIN” version || error “xray 未安装”
+[[ -x "$XRAY_BIN" ]] && "$XRAY_BIN" version || error "xray 未安装"
 ;;
 2)
-if [[ ! -x “$XRAY_BIN” ]]; then
-error “xray 未安装”
+if [[ ! -x "$XRAY_BIN" ]]; then
+error "xray 未安装"
 else
-local keys; keys=$(”$XRAY_BIN” x25519 2>/dev/null)
-local p; p=$(echo “$keys” | grep “Private key” | awk ‘{print $3}’)
-local pub; pub=$(echo “$keys” | grep “Public key” | awk ‘{print $3}’)
+local keys; keys=$("$XRAY_BIN" x25519 2>/dev/null)
+local p; p=$(echo "$keys" | grep "Private key" | awk ‘{print $3}’)
+local pub; pub=$(echo "$keys" | grep "Public key" | awk ‘{print $3}’)
 hr
-printf “  %-10s %s\n” “私钥:” “$p”
-printf “  %-10s %s\n” “公钥:” “$pub”
+printf "  %-10s %s\n" "私钥:" "$p"
+printf "  %-10s %s\n" "公钥:" "$pub"
 hr
 fi
 ;;
@@ -1629,29 +1629,29 @@ fi
 gen_uuid
 ;;
 4)
-if [[ ! -f “$CONFIG” ]]; then
-error “配置文件不存在”
+if [[ ! -f "$CONFIG" ]]; then
+error "配置文件不存在"
 else
-“$XRAY_BIN” run -test -config “$CONFIG” 2>&1   
-&& msg ok “配置文件测试通过”   
-|| error “配置文件存在错误”
+"$XRAY_BIN" run -test -config "$CONFIG" 2>&1   
+&& msg ok "配置文件测试通过"   
+|| error "配置文件存在错误"
 fi
 ;;
 5)
 journalctl -u xray -f –no-pager 2>/dev/null   
-|| tail -f “$LOG_DIR/access.log” 2>/dev/null   
-|| warn “无法读取日志”
+|| tail -f "$LOG_DIR/access.log" 2>/dev/null   
+|| warn "无法读取日志"
 ;;
 6)
 journalctl -u xray -p err –no-pager 2>/dev/null | tail -50   
-|| tail -50 “$LOG_DIR/error.log” 2>/dev/null   
-|| warn “无法读取错误日志”
+|| tail -50 "$LOG_DIR/error.log" 2>/dev/null   
+|| warn "无法读取错误日志"
 ;;
 f|F|0) return ;;
-*) warn “无效选项” ;;
+*) warn "无效选项" ;;
 esac
-echo “”
-read -rp “按 Enter 继续…” _
+echo ""
+read -rp "按 Enter 继续…" _
 done
 }
 
@@ -1663,26 +1663,26 @@ done
 
 do_uninstall() {
 clear
-title “完整卸载 Xray”
-echo “”
-echo -e “  ${is_warn} ${red}此操作将彻底删除以下所有内容，不可恢复：${none}”
+title "完整卸载 Xray"
+echo ""
+echo -e "  ${is_warn} ${red}此操作将彻底删除以下所有内容，不可恢复：${none}"
 hr
-echo “  • Xray 服务（停止 + 禁用）”
-echo “  • Xray 二进制:  /usr/local/bin/xray”
-echo “  • 配置目录:     $CONFIG_DIR/”
-echo “  • 日志目录:     $LOG_DIR/”
-echo “  • 规则文件:     $DAT_DIR/*.dat”
-echo “  • systemd 服务文件”
-echo “  • cron 定时任务”
-echo “  • xray-script 目录: $SCRIPT_DIR/”
-echo “  • xrv 快捷方式: $SYMLINK”
-echo “  • 本脚本:       $SCRIPT_PATH”
+echo "  • Xray 服务（停止 + 禁用）"
+echo "  • Xray 二进制:  /usr/local/bin/xray"
+echo "  • 配置目录:     $CONFIG_DIR/"
+echo "  • 日志目录:     $LOG_DIR/"
+echo "  • 规则文件:     $DAT_DIR/*.dat"
+echo "  • systemd 服务文件"
+echo "  • cron 定时任务"
+echo "  • xray-script 目录: $SCRIPT_DIR/"
+echo "  • xrv 快捷方式: $SYMLINK"
+echo "  • 本脚本:       $SCRIPT_PATH"
 hr
-echo “”
-read -rp “第一次确认：确定要完整卸载? [yes/N]: “ c1
-[[ “$c1” != “yes” ]] && warn “已取消” && return
-read -rp “第二次确认：不可恢复，继续? [yes/N]: “ c2
-[[ “$c2” != “yes” ]] && warn “已取消” && return
+echo ""
+read -rp "第一次确认：确定要完整卸载? [yes/N]: " c1
+[[ "$c1" != "yes" ]] && warn "已取消" && return
+read -rp "第二次确认：不可恢复，继续? [yes/N]: " c2
+[[ "$c2" != "yes" ]] && warn "已取消" && return
 
 ```
 echo ""
@@ -1757,52 +1757,52 @@ exit 0
 
 show_banner() {
 clear
-echo -e “${blue}”
-echo “  +===========================================+”
-echo “  |       Xray 全功能管理脚本 v6              |”
-echo “  |       快捷方式: xrv                       |”
-echo “  +===========================================+”
-echo -e “${none}”
+echo -e "${blue}"
+echo "  +===========================================+"
+echo "  |       Xray 全功能管理脚本 v6              |"
+echo "  |       快捷方式: xrv                       |"
+echo "  +===========================================+"
+echo -e "${none}"
 }
 
 main_menu() {
 while true; do
 show_banner
-local svc; svc=$(systemctl is-active xray 2>/dev/null || echo “未运行”)
+local svc; svc=$(systemctl is-active xray 2>/dev/null || echo "未运行")
 local svc_color
-[[ “$svc” == “active” ]] && svc_color=$green || svc_color=$red
-echo -e “  Xray 状态: ${svc_color}${svc}${none}”
-echo “”
-echo “   1) 安装 / 重装”
-echo “   2) 更新 Xray 核心”
-echo “   3) 立即更新 geo 规则”
-echo “   4) 查看运行状态（IP / DNS / 流量）”
-echo “   5) 用户管理（VLESS）”
-echo “   6) 全局配置管理”
-echo “   7) 查看配置摘要”
-echo “   8) 导出用户配置”
-echo “   9) 协议管理（Shadowsocks）”
-echo “  10) 一键更改”
-echo “  11) Xray 命令”
-echo -e “  ${red}12) 完整卸载${none}”
-echo “   0) 退出”
+[[ "$svc" == "active" ]] && svc_color=$green || svc_color=$red
+echo -e "  Xray 状态: ${svc_color}${svc}${none}"
+echo ""
+echo "   1) 安装 / 重装"
+echo "   2) 更新 Xray 核心"
+echo "   3) 立即更新 geo 规则"
+echo "   4) 查看运行状态（IP / DNS / 流量）"
+echo "   5) 用户管理（VLESS）"
+echo "   6) 全局配置管理"
+echo "   7) 查看配置摘要"
+echo "   8) 导出用户配置"
+echo "   9) 协议管理（Shadowsocks）"
+echo "  10) 一键更改"
+echo "  11) Xray 命令"
+echo -e "  ${red}12) 完整卸载${none}"
+echo "   0) 退出"
 hr
-read -rp “选择: “ num
-case “$num” in
+read -rp "选择: " num
+case "$num" in
 1)  do_install         ;;
 2)  do_upgrade_core    ;;
 3)  do_update_dat      ;;
 4)  do_status_menu     ;;
 5)  do_user_menu       ;;
 6)  do_global_menu     ;;
-7)  do_summary; echo “”; read -rp “按 Enter 返回…” _ ;;
+7)  do_summary; echo ""; read -rp "按 Enter 返回…" _ ;;
 8)  do_export          ;;
 9)  do_protocol_menu   ;;
 10) do_quick_change    ;;
 11) do_xray_cmd_menu   ;;
 12) do_uninstall       ;;
-0)  echo “再见！”; exit 0 ;;
-*)  warn “无效选项，请输入 0-12” ;;
+0)  echo "再见！"; exit 0 ;;
+*)  warn "无效选项，请输入 0-12" ;;
 esac
 done
 }
