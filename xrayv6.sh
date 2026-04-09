@@ -2,11 +2,11 @@
 # ============================================================
 #  xrayv6.sh — Xray 全功能管理脚本 v6
 #  快捷方式: xrv
-#  融合: 233boy 颜色/架构/依赖/下载体系
+#  融合: 2 颜色/架构/依赖/下载体系
 #  协议: VLESS-Reality + Shadowsocks
 # ============================================================
 
-# ── 颜色（融合 233boy 体系）────────────────────────────────
+# ── 颜色（融合 2 体系）────────────────────────────────
 red='\e[31m'; yellow='\e[33m'; gray='\e[90m'; green='\e[92m'
 blue='\e[94m'; magenta='\e[95m'; cyan='\e[96m'; none='\e[0m'
 _red()     { echo -e "${red}$*${none}";     }
@@ -56,7 +56,7 @@ SYMLINK="/usr/local/bin/xrv"
 GEOIP_URL="https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat"
 GEOSITE_URL="https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat"
 
-# ── 架构检测（融合 233boy）────────────────────────────────
+# ── 架构检测（融合 2）────────────────────────────────
 detect_arch() {
     case $(uname -m) in
         amd64|x86_64)        CORE_ARCH="64";        JQ_ARCH="amd64" ;;
@@ -65,13 +65,13 @@ detect_arch() {
     esac
 }
 
-# ── 包管理器检测（融合 233boy）────────────────────────────
+# ── 包管理器检测（融合 2）────────────────────────────
 detect_pkg_manager() {
     PKG_CMD=$(type -P apt-get || type -P yum || true)
     [[ -z "$PKG_CMD" ]] && die "仅支持 ${yellow}apt-get${none} / ${yellow}yum${none} 系统"
 }
 
-# ── 安装依赖包（融合 233boy install_pkg）─────────────────
+# ── 安装依赖包（融合 2 install_pkg）─────────────────
 install_pkg() {
     local cmd_not_found=""
     for i in "$@"; do
@@ -88,16 +88,16 @@ install_pkg() {
     fi
 }
 
-# ── wget 封装（融合 233boy _wget）─────────────────────────
+# ── wget 封装（融合 2 _wget）─────────────────────────
 _wget() {
     [[ -n "${proxy:-}" ]] && export https_proxy=$proxy
     wget --no-check-certificate "$@"
 }
 
-# ── 获取公网 IP（融合 233boy get_ip）─────────────────────
+# ── 获取公网 IP（融合 2 get_ip）─────────────────────
 get_server_ip() {
     SERVER_IP=""
-    # 优先用 233boy 方式（cloudflare trace，更稳定）
+    # 优先用 2 方式（cloudflare trace，更稳定）
     local trace
     trace=$(_wget -4 -qO- https://one.one.one.one/cdn-cgi/trace 2>/dev/null | grep "^ip=")
     [[ -n "$trace" ]] && SERVER_IP="${trace#ip=}"
