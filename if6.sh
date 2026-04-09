@@ -4,5 +4,5 @@ set -e
 REPO="https://raw.githubusercontent.com/PXPXPX2023/net/refs/heads/main"
 curl -sS -o /root/xrayv6f6.sh "$REPO/xrayv6f6.sh"
 chmod +x /root/xrayv6f6.sh
-ln -sf /root/xrayv6.sh /usr/local/bin/xrv
+ln -sf /root/xrayv6f6.sh /usr/local/bin/xrv
 echo "安装完成，输入 xrv 启动"
