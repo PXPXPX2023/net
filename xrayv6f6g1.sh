@@ -207,17 +207,26 @@ gen_x25519() {
     fi
     local keys
     keys=$("$XRAY_BIN" x25519 2>/dev/null)
-    X25519_PRIV=$(echo "$keys" | grep "Private key" | awk '{print $3}')
-    X25519_PUB=$(echo "$keys"  | grep "Public key"  | awk '{print $3}')
+    
+    # 改进的匹配逻辑：忽略大小写，并以冒号为分隔符取第二列
+    X25519_PRIV=$(echo "$keys" | grep -i "Private" | awk -F': ' '{print $2}' | tr -d ' ')
+    X25519_PUB=$(echo "$keys" | grep -i "Public" | awk -F': ' '{print $2}' | tr -d ' ')
+
     if [[ -z "$X25519_PRIV" || -z "$X25519_PUB" ]]; then
-        die "x25519 密钥对生成失败"
+        # 最后的保底尝试：针对部分版本输出在括号内的情况
+        X25519_PUB=$(echo "$keys" | grep -i "PublicKey" | awk -F': ' '{print $2}' | tr -d ' ')
+    fi
+
+    if [[ -z "$X25519_PRIV" || -z "$X25519_PUB" ]]; then
+        die "x25519 密钥对抓取失败，请检查输出格式"
     fi
 }
 
 derive_pubkey() {
     local priv="$1"
     [[ ! -x "$XRAY_BIN" ]] && echo "" && return
-    "$XRAY_BIN" x25519 -i "$priv" 2>/dev/null | grep "Public key" | awk '{print $3}'
+    # 同样的改进逻辑
+    "$XRAY_BIN" x25519 -i "$priv" 2>/dev/null | grep -i "Public" | awk -F': ' '{print $2}' | tr -d ' '
 }
 
 install_update_dat() {
