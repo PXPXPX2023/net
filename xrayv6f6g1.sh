@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 
 # ============================================================
-# xrayv6.sh – Xray 全功能管理脚本 v6
+# xrayv6.sh – Xray 全功能管理脚本 v6 (修复版)
 # 快捷方式: xrv
 # 协议: VLESS-Reality + Shadowsocks
-# 运行方式: bash xrayv6.sh
 # ============================================================
 
 # 必须用 bash 运行
@@ -61,8 +60,8 @@ LOG_DIR="/var/log/xray"
 SCRIPT_PATH=$(realpath "$0")
 SYMLINK="/usr/local/bin/xrv"
 
-GEOIP_URL="[https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat](https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat)"
-GEOSITE_URL="[https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat](https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat)"
+GEOIP_URL="https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat"
+GEOSITE_URL="https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat"
 
 # – 架构检测 –––––––––––––––––––––––
 detect_arch() {
@@ -105,10 +104,10 @@ _wget() {
 get_server_ip() {
     SERVER_IP=""
     local trace
-    trace=$(_wget -4 -qO- [https://one.one.one.one/cdn-cgi/trace](https://one.one.one.one/cdn-cgi/trace) 2>/dev/null | grep "^ip=" || true)
+    trace=$(_wget -4 -qO- "https://one.one.one.one/cdn-cgi/trace" 2>/dev/null | grep "^ip=" || true)
     [[ -n "$trace" ]] && SERVER_IP="${trace#ip=}"
-    [[ -z "$SERVER_IP" ]] && SERVER_IP=$(curl -fsSL --max-time 6 [https://api4.ipify.org](https://api4.ipify.org) 2>/dev/null || true)
-    [[ -z "$SERVER_IP" ]] && SERVER_IP=$(curl -fsSL --max-time 6 [https://ifconfig.me](https://ifconfig.me) 2>/dev/null || true)
+    [[ -z "$SERVER_IP" ]] && SERVER_IP=$(curl -fsSL --max-time 6 "https://api4.ipify.org" 2>/dev/null || true)
+    [[ -z "$SERVER_IP" ]] && SERVER_IP=$(curl -fsSL --max-time 6 "https://ifconfig.me" 2>/dev/null || true)
     [[ -z "$SERVER_IP" ]] && SERVER_IP="YOUR_SERVER_IP"
 }
 
@@ -139,7 +138,6 @@ check_config() {
         _try_restore_backup
         return 1
     fi
-    # 修复 VLESS clients 为 null 的情况
     local vless_count
     vless_count=$(jq '[.inbounds[]? | select(.protocol=="vless")] | length' "$CONFIG" 2>/dev/null || echo 0)
     if [[ "$vless_count" -gt 0 ]]; then
@@ -167,7 +165,7 @@ _try_restore_backup() {
     fi
 }
 
-# – 安全 jq 写入（原子替换 + 自动备份）——————
+# – 安全 jq 写入 ——————
 _safe_jq_write() {
     local filter="$1"
     local tmp; tmp=$(mktemp /tmp/xray_cfg_XXXXXX.json)
@@ -228,8 +226,8 @@ install_update_dat() {
 #!/usr/bin/env bash
 set -e
 XRAY_DAT_DIR="/usr/local/share/xray"
-GEOIP_URL="[https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat](https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat)"
-GEOSITE_URL="[https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat](https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat)"
+GEOIP_URL="https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat"
+GEOSITE_URL="https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat"
 mkdir -p "$XRAY_DAT_DIR" && cd "$XRAY_DAT_DIR"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 更新 geoip.dat..."
 curl -fsSL -o geoip.dat.new "$GEOIP_URL" && mv -f geoip.dat.new geoip.dat
@@ -393,7 +391,7 @@ input_port() {
 input_domain() {
     local d
     while true; do
-        read -rp "输入目标域名 (如 [www.microsoft.com](https://www.microsoft.com)): " d
+        read -rp "输入目标域名 (如 www.microsoft.com): " d
         [[ -n "$d" ]] && echo "$d" && return
         error "域名不能为空"
     done
@@ -436,8 +434,6 @@ _print_all_links() {
 _get_vless_idx() { jq '[.inbounds | to_entries[] | select(.value.protocol=="vless")] | .[0].key' "$CONFIG" 2>/dev/null; }
 _get_ss_idx() { jq '[.inbounds | to_entries[] | select(.value.protocol=="shadowsocks")] | .[0].key' "$CONFIG" 2>/dev/null; }
 
-# – 核心逻辑 —————————————————
-
 do_install() {
     title "安装 / 重装 Xray"
     if systemctl is-active --quiet xray 2>/dev/null; then
@@ -451,7 +447,7 @@ do_install() {
     proto_choice=${proto_choice:-1}
 
     msg warn "下载并安装 Xray 核心..."
-    bash -c "$(curl -fsSL [https://github.com/XTLS/Xray-install/raw/main/install-release.sh](https://github.com/XTLS/Xray-install/raw/main/install-release.sh))" @ install
+    bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
     
     case "$proto_choice" in
         1) _init_vless_config ;;
@@ -498,7 +494,7 @@ do_upgrade_core() {
     title "更新 Xray 核心"
     local cur_ver=$("$XRAY_BIN" version 2>/dev/null | head -n1 || echo "未知")
     echo "  当前版本: $cur_ver"
-    local versions; versions=$(curl -fsSL [https://api.github.com/repos/XTLS/Xray-core/releases](https://api.github.com/repos/XTLS/Xray-core/releases) | grep '"tag_name"' | cut -d'"' -f4 | head -n 15)
+    local versions; versions=$(curl -fsSL https://api.github.com/repos/XTLS/Xray-core/releases | grep '"tag_name"' | cut -d'"' -f4 | head -n 15)
     [[ -z "$versions" ]] && error "获取失败" && return
     
     local i=1; local ver_arr=()
@@ -506,7 +502,7 @@ do_upgrade_core() {
     read -rp "  选择版本编号: " sel
     [[ -z "$sel" ]] && return
     local VERSION="${ver_arr[$((sel-1))]}"
-    bash -c "$(curl -fsSL [https://github.com/XTLS/Xray-install/raw/main/install-release.sh](https://github.com/XTLS/Xray-install/raw/main/install-release.sh))" @ install -v "$VERSION"
+    bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -v "$VERSION"
     systemctl restart xray
     msg ok "已更新到 $VERSION"
 }
@@ -542,8 +538,6 @@ _status_traffic() {
     read -rp "按 Enter 继续..." _
 }
 
-# – 用户管理 —————————————————
-
 _vless_client_count() { jq '[.inbounds[]? | select(.protocol=="vless") | .settings.clients[]?] | length' "$CONFIG" 2>/dev/null || echo 0; }
 
 _list_users() {
@@ -571,8 +565,6 @@ _delete_user() {
     systemctl restart xray
     info "已删除"
 }
-
-# – 全局设置 —————————————————
 
 _global_block_rules() {
     while true; do
