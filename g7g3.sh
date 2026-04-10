@@ -330,7 +330,7 @@ do_summary() {
         echo -e " ShortId\t: \033[33m$sid\033[0m"
         echo -e " uTLS伪装\t: \033[33m$utls_fp\033[0m"
         hr
-        _green "一键导入链接 (已剔除1024, 加入uTLS与流控):"
+        _green "一键导入链接 ( 加入uTLS与流控):"
         echo "vless://$uuid@$SERVER_IP:$port?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$sni&fp=$utls_fp&pbk=$pub&sid=$sid&type=tcp&headerType=none#xp-reality"
         echo ""
     fi
