@@ -328,7 +328,7 @@ display_results() {
     display_green "=========================================="
     echo
     display_green "一键导入链接 (VLESS URL)："
-    echo "vless://$UUID@$SERVER_IP:$PORT_NUMBER?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$SERVER_SNI&fp=chrome&pbk=$RE_PUBLIC_KEY&sid=88&type=tcp&headerType=none#1024-reality"
+    echo "vless://$UUID@$SERVER_IP:$PORT_NUMBER?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$SERVER_SNI&fp=chrome&pbk=$RE_PUBLIC_KEY&sid=88&type=tcp&headerType=none#xp-reality"
     echo
 }
 
