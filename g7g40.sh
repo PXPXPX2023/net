@@ -93,7 +93,7 @@ preflight() {
 
 # -- 核心：130+ 实体 SNI 扫描引擎 (带 CF 探测，纯字符串防吞噬) --
 run_sni_scanner() {
-    title "雷达嗅探：全量 130+ 实体矩阵探测"
+    title "XXXXXXXXXXXXXXXXXXXX雷达嗅探：全量 130+ 实体矩阵探测"
     print_yellow "正在执行深度握手测试并物理鉴定 CDN，耗时约 60 秒...\n"
     
     mkdir -p "$CONFIG_DIR" 2>/dev/null
