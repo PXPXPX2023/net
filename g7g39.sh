@@ -451,7 +451,7 @@ do_install() {
     
     echo -e "  ${cyan}请选择要安装的代理协议：${none}"
     echo "  1) VLESS-Reality (推荐, 强力防封)"
-    echo "  2) Shadowsocks (经典, 兼容好)"
+    echo "  2) Shadowsocks (建议落地机使用)"
     echo "  3) 两个都安装 (双管齐下)"
     read -rp "  请输入编号: " proto_choice
     proto_choice=${proto_choice:-1}
