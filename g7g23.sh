@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-
+#g7g23.sh
 if]; then
-    echo -e "\033 此脚本必须以 root 身份运行!\033[0m" 1" '+/' '-_' (集成至 * **修复 --- -d -p -sL -v -w ...)` 0 1**：恢复 2**：在菜单项 3**：重写 5 Cron SIP002 SS `/dev/fd/xx`，通过 `cp` `grep `mkdir crontab"` g7g23.sh)： tr | 复制它在部分系统中可能为空。 执行前，强制增加 是 格式：`base64 环境也能正常注入。 过滤，确保空的 运行，`$0` 针对性修复方案 链接生成逻辑，采用严格的 🛠️>&2
+    echo -e "\033 此脚本必须以 root 身份运行!\033[0m" 1>&2
     exit 1
 fi
 
@@ -35,9 +35,7 @@ print_red()    { echo -e "\033] && echo " $1" >> "$LOG_FILE"; }
 print_green()  { echo -e "\033] && echo " $1" >> "$LOG_FILE"; }
 print_yellow() { echo -e "\033] && echo " $1" >> "$LOG_FILE"; }
 display_cyan() { echo -e "\033[36m$1\033[0m"; }
-hr()           { echo -e "\033[90m---------------------------------------------------\033[0m"; }
-title() {
-    echo -e "\n\033] && echo " $1" >> "$LOG_FILE"; }
+hr()           { echo -e "\033[90m---------------------------------------------------\033] && echo " $1" >> "$LOG_FILE"; }
 log_info() { echo -e "\033\033\033 $1"; }
 log_err()  { echo -e "\033\033 $1"; }
 exit_with_error() { print_red "致命错误: $1"; exit 1; }
@@ -104,10 +102,23 @@ run_sni_scanner() {
     if]; then
         print_red "\n=> 网络探测失败，回退至基础配置 www.microsoft.com"
         echo "www.microsoft.com 999" > "$SNI_CACHE_FILE"
+        BEST_SNI="www.microsoft.com"
         return
     fi
 
-    for ((i=0; i<n-1; "$SNI_CACHE_FILE" "${valid_snis} ${valid_times} ${valid_times}" ((i="0;" ((j="0;" -f -gt ]]; do done echo fi for i++)); i<n; if} j++)); j<n-i-1; local rm temp_s="${valid_snis};" temp_t="${valid_times};" then valid_snis="$temp_s" valid_times="$temp_t">> "$SNI_CACHE_FILE"
+    # 冒泡排序
+    for ((i=0; i<n-1; i++)); do
+        for ((j=0; j<n-i-1; j++)); do
+            if} -gt ${valid_times} ]]; then
+                local temp_t=${valid_times}; valid_times=${valid_times}; valid_times=$temp_t
+                local temp_s=${valid_snis}; valid_snis=${valid_snis}; valid_snis=$temp_s
+            fi
+        done
+    done
+
+    rm -f "$SNI_CACHE_FILE"
+    for ((i=0; i<n; i++)); do
+        echo "${valid_snis} ${valid_times}" >> "$SNI_CACHE_FILE"
     done
     print_green "\n探测完毕！战备缓存已建立。"
 }
@@ -120,7 +131,18 @@ choose_sni() {
                 cached_times+=("$t")
                 ((idx++))
                ] && break
-            done <"$SNI_CACHE_FILE" " && ((i="0;" -gt -rp 2 300 BEST_SNI="${custom_sni:-www.microsoft.com};" \033} ]] break continue custom_sni do elif]; elif}" for i++)); i<${#cached_snis}; if]; local ms_color="\033} (延迟: ${ms_color}${cached_times}ms\033: " read run_sni_scanner; sel="${sel:-1}" then 请输入自定义域名:>/dev/null; then
+            done < "$SNI_CACHE_FILE"
+
+            for ((i=0; i<${#cached_snis}; i++)); do
+                local ms_color="\033} -gt 150 ]] && ms_color="\033} -gt 300 ]] && ms_color="\033} (延迟: ${ms_color}${cached_times}ms\033: " sel
+            sel=${sel:-1}
+
+            if]; then
+                run_sni_scanner; continue
+            elif]; then
+                read -rp "  请输入自定义域名: " custom_sni
+                BEST_SNI=${custom_sni:-www.microsoft.com}; break
+            elif}" ]] 2>/dev/null; then
                 BEST_SNI="${cached_snis}"; break
             else
                 BEST_SNI="${cached_snis}"; break
@@ -254,7 +276,14 @@ validate_port() {+$ && "$1" -ge 1 && "$1" -le 65535 ]]; }
 
 setup_cron_dat() {
     mkdir -p "$SCRIPT_DIR" "$DAT_DIR"
-    cat > "$UPDATE_DAT_SCRIPT" <<'EOF' "$UPDATE_DAT_SCRIPT" # #!/usr/bin/env (crontab +x -fsSL -l -o /usr/local/share/xray/geoip.dat /usr/local/share/xray/geosite.dat 1：过滤 2 EOF bash chmod crontab crontab，防止新机器上写入 curl https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat no restart systemctl xray 修复 失败>/dev/null | grep -v "no crontab" | grep -v "$UPDATE_DAT_SCRIPT"; echo "0 3 * * * $UPDATE_DAT_SCRIPT") | crontab -
+    cat > "$UPDATE_DAT_SCRIPT" <<'EOF'
+#!/usr/bin/env bash
+curl -fsSL -o /usr/local/share/xray/geoip.dat https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat
+curl -fsSL -o /usr/local/share/xray/geosite.dat https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat
+systemctl restart xray
+EOF
+    chmod +x "$UPDATE_DAT_SCRIPT"
+    (crontab -l 2>/dev/null | grep -v "$UPDATE_DAT_SCRIPT" | grep -v "no crontab"; echo "0 3 * * * $UPDATE_DAT_SCRIPT") | crontab -
 }
 
 install_xray_core() {
@@ -271,7 +300,25 @@ install_xray_core() {
 
 _init_base_config() {
     mkdir -p "$CONFIG_DIR"
-    cat > "$CONFIG" <<EOF "IPIfNonMatch", "domainStrategy": "inbounds": "log": "loglevel": "outbounds": "routing": "rules":,"outboundTag":"block","_enabled":true}, "type":"field","ip":,"outboundTag":"block","_enabled":true}, "warning" "部署 && --quiet / 2 EOF [], ] do_install() if] is-active systemctl title xray { {"tag_id":"ads","type":"field","domain":,"outboundTag":"block","_enabled":true} {"tag_id":"cn", } }, 重构网络">/dev/null; then
+    cat > "$CONFIG" <<EOF
+{
+  "log": { "loglevel": "warning" },
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules":,"outboundTag":"block","_enabled":true},
+      {"tag_id":"cn", "type":"field","ip":,"outboundTag":"block","_enabled":true},
+      {"tag_id":"ads","type":"field","domain":,"outboundTag":"block","_enabled":true}
+    ]
+  },
+  "inbounds": [],
+  "outbounds":
+}
+EOF
+}
+
+do_install() {
+    title "部署 / 重构网络"
+    if] && systemctl is-active --quiet xray 2>/dev/null; then
         print_yellow "将覆盖现有配置!"
         read -rp "继续?: " c;] && return
         systemctl stop xray 2>/dev/null
@@ -372,7 +419,9 @@ do_upgrade_core() {
     title "更新 / 降级 Xray"
     local cur_ver=$("$XRAY_BIN" version 2>/dev/null | head -n1 | awk '{print $2}')
     echo -e "当前版本: \033] && return
-    local i=1; local arr=(); while IFS= read -r v; do echo " $i) $v"; arr+=("$v"); ((i++)); done <<< " "$(curl "$ver" "$vs" "选择版本: && -c -fsSL -rp -v ;] @ bash https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" install local read return sel;] ver="${arr}">/dev/null 2>&1
+    local i=1; local arr=(); while IFS= read -r v; do echo " $i) $v"; arr+=("$v"); ((i++)); done <<< "$vs"
+    read -rp "选择版本: " sel;] && return
+    local ver="${arr}";] && bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -v "$ver" >/dev/null 2>&1
     systemctl restart xray 2>/dev/null || service xray restart; print_green "完成"; read -rp "按 Enter 返回..." _
 }
 
@@ -397,7 +446,6 @@ do_summary() {
         local sport=$(jq -r ".inbounds.port" "$CONFIG")
         local spass=$(jq -r ".inbounds.settings.password" "$CONFIG")
         local sm=$(jq -r ".inbounds.settings.method" "$CONFIG")
-        # 修复 3：使用严格的 Base64url 标准编码生成 SS URI
         local b64=$(printf '%s' "${sm}:${spass}" | base64 -w 0 | tr '+/' '-_' | tr -d '=')
         display_cyan "【Shadowsocks】\n ss://${b64}@${URL_IP}:${sport}#xp-ss\n"
     fi
@@ -407,7 +455,7 @@ main_menu() {
     detect_distribution; detect_package_manager; check_service_manager; install_dependencies
     while true; do
         clear
-        echo -e "\033[94m===================================================\033]; then systemctl is-active --quiet xray 2>/dev/null && svc="active"; else service xray status 2>/dev/null | grep -q "running" && svc="active"; fi
+        echo -e "\033]; then systemctl is-active --quiet xray 2>/dev/null && svc="active"; else service xray status 2>/dev/null | grep -q "running" && svc="active"; fi
         local cur_ver=$("$XRAY_BIN" version 2>/dev/null | head -n1 | awk '{print $2}')
         local st_str=$(] && echo -e "\033[32m▶ 稳定运行\033[0m" || echo -e "\033[31m■ 脱机停止\033[0m")
         echo -e "  状态: $st_str | 版本: \033[33m${cur_ver:-N/A}\033[0m\n"
@@ -426,15 +474,13 @@ main_menu() {
             2) do_user_manager ;;
             3) do_summary; read -rp "按 Enter 返回..." _ ;;
             4) do_upgrade_core ;;
-            5) 
-               # 修复 2：防止因尚未安装 Xray 导致目标目录不存在报错
-               mkdir -p "$DAT_DIR"
-               curl -fsSL -o "$DAT_DIR/geoip.dat" "https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat" && curl -fsSL -o "$DAT_DIR/geosite.dat" "https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat" && { systemctl restart xray 2>/dev/null || service xray restart; print_green "完成"; read -rp "按 Enter 返回..." _ ;} ;;
+            5) mkdir -p "$DAT_DIR"; curl -fsSL -o "$DAT_DIR/geoip.dat" "https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat" && curl -fsSL -o "$DAT_DIR/geosite.dat" "https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat" && { systemctl restart xray 2>/dev/null || service xray restart; print_green "完成"; read -rp "按 Enter 返回..." _ ;} ;;
             6) systemctl stop xray 2>/dev/null; systemctl disable xray 2>/dev/null; rm -f /etc/systemd/system/xray*.service; systemctl daemon-reload 2>/dev/null; crontab -l 2>/dev/null | grep -v "$UPDATE_DAT_SCRIPT" | grep -v "no crontab" | crontab -; rm -rf "$CONFIG_DIR" "$DAT_DIR" "$XRAY_BIN" "$SYMLINK" "$SCRIPT_DIR"; exit 0 ;;
             7) do_change_sni ;;
             0) exit 0 ;;
         esac
     done
 }
+
 trap 'print_red "\n中断"; exit 1' INT TERM
 main_menu
