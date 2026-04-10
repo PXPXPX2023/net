@@ -259,7 +259,7 @@ do_install() {
     setup_cron_dat
     get_server_ip_silent
     
-    echo -e "  [拓扑模式选择]\n  1) VLESS-Reality + XTLS Vision (主推大杀器)\n  2) Shadowsocks (经典备用)\n  3) 两者均安装"
+    echo -e "  [拓扑模式选择]\n  1) VLESS-Reality + XTLS Vision (推荐)\n  2) Shadowsocks (落地机器使用)\n  3) 两者均安装"
     read -rp "  请选择 [1]: " choice
     choice=${choice:-1}
     
