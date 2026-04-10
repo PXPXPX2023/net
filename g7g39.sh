@@ -1,24 +1,28 @@
 #!/usr/bin/env bash
 # ============================================================
-# 脚本名称: g7g38.sh (The Pinnacle Fusion Edition)
+# 脚本名称: g7g39.sh (The Pinnacle Ascendant Edition)
 # 快捷方式: xrv
-# 融合增量: 
-#   1. 重新引入 Shadowsocks 协议，支持双协议共存安装。
-#   2. 130+ SNI 矩阵新增 Cloudflare CDN 探测并直观展示。
-#   3. 修复 JSON 模板防吞噬，分发中心详情满血恢复。
-#   4. 引入半块 UTF8 渲染，终端二维码视觉体积缩小 50%。
-#   5. 新增 `9) 运行状态` 模块 (含系统状态、IP&DNS、网卡流量)。
+# 巅峰突破: 
+#   1. 启用十六进制 \x5B \x5D 全局变量引擎，物理级免疫 Markdown 吞噬 Bug。
+#   2. 恢复 VLESS / Shadowsocks 双协议共存系统。
+#   3. 130+ 实体矩阵新增 Cloudflare CDN 精准物理探测与直观标记。
+#   4. 引入半块 UTF8 渲染技术，终端二维码视觉体积直接缩小 50%。
+#   5. 完美移植 9) 运行状态模块 (包含 IP、DNS、vnstat 网卡级流量统计)。
 # ============================================================
 
 # 必须用 bash 运行
 if test -z "$BASH_VERSION"; then
-    echo "错误: 请用 bash 运行此脚本: bash g7g38.sh"
+    echo "错误: 请用 bash 运行此脚本: bash g7g39.sh"
     exit 1
 fi
 
 # -- 颜色定义 --
 red='\e[31m'; yellow='\e[33m'; gray='\e[90m'; green='\e[92m'
 blue='\e[94m'; magenta='\e[95m'; cyan='\e[96m'; none='\e[0m'
+
+# -- 终极防吞噬十六进制常量定义 (规避底层渲染器吃符号 Bug) --
+L_B=$(printf '\x5B')
+R_B=$(printf '\x5D')
 
 # -- 全局路径与变量 --
 XRAY_BIN="/usr/local/bin/xray"
@@ -32,6 +36,7 @@ SCRIPT_PATH=$(realpath "$0")
 SERVER_IP=""
 REMARK_NAME="xp-reality"
 BEST_SNI="www.microsoft.com"
+LISTEN_PORT=443
 
 # 初始化环境
 mkdir -p "$CONFIG_DIR" "$DAT_DIR" 2>/dev/null
@@ -43,10 +48,10 @@ print_yellow()  { echo -e "${yellow}$*${none}"; }
 print_magenta() { echo -e "${magenta}$*${none}"; }
 print_cyan()    { echo -e "${cyan}$*${none}"; }
 
-info()  { echo -e "${green}${none} $*"; }
-warn()  { echo -e "${yellow}${none} $*"; }
-error() { echo -e "${red}${none} $*";   }
-die()   { echo -e "\n${red}${none} $*\n"; exit 1; }
+info()  { echo -e "${green}✓${none} $*"; }
+warn()  { echo -e "${yellow}!${none} $*"; }
+error() { echo -e "${red}✗${none} $*";   }
+die()   { echo -e "\n${red}致命错误${none} $*\n"; exit 1; }
 
 title() {
     echo -e "\n${blue}===================================================${none}"
@@ -60,7 +65,7 @@ preflight() {
     if test "$EUID" -ne 0; then die "此脚本必须以 root 身份运行"; fi
     if ! command -v systemctl >/dev/null 2>&1; then die "系统缺少 systemctl"; fi
     
-    # 新增 vnstat 依赖用于流量统计
+    # 增加 vnstat 以支持流量统计
     local need="jq curl wget xxd unzip qrencode vnstat"
     local install_list=""
     for i in $need; do 
@@ -76,6 +81,7 @@ preflight() {
         systemctl start vnstat >/dev/null 2>&1 || true
     fi
 
+    # 快捷指令物理绑定
     if test -f "$SCRIPT_PATH"; then
         cp -f "$SCRIPT_PATH" "$SYMLINK" >/dev/null 2>&1
         chmod +x "$SYMLINK" >/dev/null 2>&1
@@ -85,10 +91,10 @@ preflight() {
     SERVER_IP=$(curl -s -4 --connect-timeout 5 https://api.ipify.org || curl -s -4 --connect-timeout 5 https://ifconfig.me || echo "获取失败")
 }
 
-# -- 核心：130+ 实体 SNI 扫描引擎 (带 CF 探测) --
+# -- 核心：130+ 实体 SNI 扫描引擎 (带 CF 探测，纯字符串防吞噬) --
 run_sni_scanner() {
     title "雷达嗅探：全量 130+ 实体矩阵探测"
-    print_yellow "正在逐一异步握手以建立战备缓存，并检测 CF CDN，约耗时 60 秒...\n"
+    print_yellow "正在执行深度握手测试并物理鉴定 CDN，耗时约 60 秒...\n"
     
     mkdir -p "$CONFIG_DIR" 2>/dev/null
     
@@ -137,20 +143,20 @@ run_sni_scanner() {
         local ms=$(echo "$time_raw" | awk '{print int($1 * 1000)}')
 
         if test "$ms" -gt 0; then
+            # 物理鉴定 Cloudflare 拦截墙
             if curl -sI -m 2 "https://$sni" 2>/dev/null | grep -qiE "server: cloudflare|cf-ray"; then
-                echo -e " ${green}${none} $sni : ${yellow}${ms}ms${none} | ${red}${none}"
+                echo -e " ${green}存活${none} $sni : ${yellow}${ms}ms${none} | ${red}CF 拦截网${none}"
                 echo "$ms $sni YES_CF" >> "$tmp_sni"
             else
-                echo -e " ${green}${none} $sni : ${yellow}${ms}ms${none} | ${gray}${none}"
+                echo -e " ${green}存活${none} $sni : ${yellow}${ms}ms${none} | ${cyan}原生直连${none}"
                 echo "$ms $sni NO_CF" >> "$tmp_sni"
             fi
         fi
     done
 
-    # 优先排序无 CF 的，其次才是有 CF 的，保证 Reality 连接质量
+    # 优先筛选原生节点，排满 10 个，不足用 CF 凑数
     if test -s "$tmp_sni"; then
         grep "NO_CF" "$tmp_sni" | sort -n | head -n 10 | awk '{print $2, $1}' > "$SNI_CACHE_FILE"
-        # 如果不够 10 个，拿 CF 的凑数
         local c=$(wc -l < "$SNI_CACHE_FILE")
         if test "$c" -lt 10; then
             grep "YES_CF" "$tmp_sni" | sort -n | head -n $((10 - c)) | awk '{print $2, $1}' >> "$SNI_CACHE_FILE"
@@ -166,16 +172,16 @@ run_sni_scanner() {
 choose_sni() {
     while true; do
         if test -f "$SNI_CACHE_FILE"; then
-            echo -e "\n  ${cyan}【战备缓存：极速 Top 10 (已过滤高危 CDN)】${none}"
+            echo -e "\n  ${cyan}战备缓存：极速 Top 10 (已优先原生直连)${none}"
             local idx=1
             while read -r s t; do
                 echo -e "  $idx) $s (${cyan}${t}ms${none})"
                 idx=$((idx + 1))
             done < "$SNI_CACHE_FILE"
             
-            echo -e "  ${yellow}r) 抛弃缓存全网扫描${none}"
+            echo -e "  ${yellow}r) 抛弃缓存重新扫描矩阵${none}"
             echo "  0) 手动输入自定义域名"
-            echo "  q) 取消并返回"
+            echo "  q) 取消并返回主菜单"
             
             read -rp "  请下达指令: " sel
             sel=${sel:-1}
@@ -228,7 +234,7 @@ _safe_jq_write() {
     return 1
 }
 
-# -- 密码/密钥生成工具 --
+# -- SS 工具 --
 gen_ss_pass() {
     head -c 24 /dev/urandom | base64 | tr -d '=/+\n' | head -c 24
 }
@@ -243,14 +249,15 @@ _select_ss_method() {
     esac
 }
 
-# -- 用户管理 --
+# -- 用户管理 (十六进制防吞噬) --
 do_user_manager() {
     while true; do
         title "UUID 权限与管理"
         if ! test -f "$CONFIG"; then error "未发现配置"; return; fi
 
-        local clients=$(jq -r '.inbounds[] | select(.protocol=="vless") | .settings.clients[] | .id' "$CONFIG" 2>/dev/null)
-        if test -z "$clients" || test "$clients" = "null"; then error "未发现 VLESS 节点配置"; return; fi
+        # 使用物理字符组装 jq，防 Markdown 吃符号
+        local clients=$(jq -r ".inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .settings.clients${L_B}${R_B} | .id" "$CONFIG" 2>/dev/null)
+        if test -z "$clients" || test "$clients" = "null"; then error "未发现 VLESS 节点"; return; fi
 
         local tmp_users="/tmp/xray_users.txt"
         echo "$clients" | awk '{print NR, $0}' > "$tmp_users"
@@ -268,7 +275,7 @@ do_user_manager() {
         
         if test "$uopt" = "a"; then
             local nu=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || $XRAY_BIN uuid)
-            _safe_jq_write '(.inbounds[] | select(.protocol=="vless") | .settings.clients) +='
+            _safe_jq_write "(.inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .settings.clients) += ${L_B} {\"id\":\"$nu\",\"flow\":\"xtls-rprx-vision\"} ${R_B}"
             systemctl restart xray; info "已新增: $nu"
             
         elif test "$uopt" = "d"; then
@@ -279,7 +286,7 @@ do_user_manager() {
             else
                 local target_uuid=$(awk -v id="$dnum" '$1==id {print $2}' "$tmp_users")
                 if test -n "$target_uuid"; then
-                    _safe_jq_write '(.inbounds[] | select(.protocol=="vless") | .settings.clients) |= map(select(.id != "'"$target_uuid"'"))'
+                    _safe_jq_write "(.inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .settings.clients) |= map(select(.id != \"$target_uuid\"))"
                     systemctl restart xray; info "已成功删除。"
                 else
                     error "序号无效。"
@@ -298,32 +305,33 @@ _global_block_rules() {
     while true; do
         title "屏蔽规则管理"
         if ! test -f "$CONFIG"; then error "未发现配置"; return; fi
-        local bt_en=$(jq -r '.routing.rules[] | select(.protocol | index("bittorrent")) | ._enabled' "$CONFIG" 2>/dev/null | head -1)
+        local bt_en=$(jq -r ".routing.rules${L_B}${R_B} | select(.protocol | index(\"bittorrent\")) | ._enabled" "$CONFIG" 2>/dev/null | head -1)
         
-        echo "  1) BT/PT 屏蔽开关 "
+        echo "  1) BT/PT 屏蔽开关 当前状态: ${yellow}${bt_en}${none}"
         echo "  0) 返回"
         read -rp "选择: " bc
         if test "$bc" = "0"; then return; fi
         
         local nv="true"; if test "$bt_en" = "true"; then nv="false"; fi
-        _safe_jq_write '(.routing.rules[] | select(.protocol | index("bittorrent")) | ._enabled) = '$nv''
+        _safe_jq_write "(.routing.rules${L_B}${R_B} | select(.protocol | index(\"bittorrent\")) | ._enabled) = $nv"
         systemctl restart xray; info "已切换 BT 屏蔽状态为: $nv"
     done
 }
 
-# -- 分发中心 (双协议输出 + 缩小版二维码) --
+# -- 分发中心 (双协议输出 + 缩半体积二维码) --
 do_summary() {
     if ! test -f "$CONFIG"; then return; fi
     title "The Pinnacle 节点详情中心"
     
-    # 解析 VLESS
-    local v_count=$(jq '? | select(.protocol=="vless")] | length' "$CONFIG" 2>/dev/null || echo 0)
+    # -- VLESS 解析 --
+    local v_count=$(jq ".inbounds${L_B}${R_B} | select(.protocol==\"vless\") | length" "$CONFIG" 2>/dev/null || echo 0)
     if test "$v_count" -gt 0; then
-        local uuid=$(jq -r '.inbounds[] | select(.protocol=="vless") | .settings.clients.id' "$CONFIG" 2>/dev/null)
-        local port=$(jq -r '.inbounds[] | select(.protocol=="vless") | .port' "$CONFIG" 2>/dev/null)
-        local sni=$(jq -r '.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings.serverNames' "$CONFIG" 2>/dev/null)
-        local sid=$(jq -r '.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings.shortIds' "$CONFIG" 2>/dev/null)
-        local pub=$(jq -r '.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings.publicKey' "$CONFIG" 2>/dev/null)
+        # 物理级提取字段防吞噬
+        local uuid=$(jq -r ".inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .settings.clients${L_B}0${R_B}.id" "$CONFIG" 2>/dev/null)
+        local port=$(jq -r ".inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .port" "$CONFIG" 2>/dev/null)
+        local sni=$(jq -r ".inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .streamSettings.realitySettings.serverNames${L_B}0${R_B}" "$CONFIG" 2>/dev/null)
+        local sid=$(jq -r ".inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .streamSettings.realitySettings.shortIds${L_B}0${R_B}" "$CONFIG" 2>/dev/null)
+        local pub=$(jq -r ".inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .streamSettings.realitySettings.publicKey" "$CONFIG" 2>/dev/null)
         
         if test -n "$uuid" && test "$uuid" != "null"; then
             hr
@@ -340,19 +348,19 @@ do_summary() {
             echo -e "\n  ${cyan}通用链接:${none} \n  $link\n"
             
             if command -v qrencode >/dev/null 2>&1; then
-                echo -e "  ${cyan}手机扫码导入 (缩小版):${none}"
-                # 使用 -t UTF8 替代 ANSIUTF8，使二维码视觉高度缩小 50%
+                echo -e "  ${cyan}手机扫码导入 (缩小版 50%):${none}"
+                # 使用 -t UTF8 半块字符大幅缩小高度，不辣眼睛
                 qrencode -t UTF8 "$link"
             fi
         fi
     fi
 
-    # 解析 Shadowsocks
-    local s_count=$(jq '? | select(.protocol=="shadowsocks")] | length' "$CONFIG" 2>/dev/null || echo 0)
+    # -- SS 解析 --
+    local s_count=$(jq ".inbounds${L_B}${R_B} | select(.protocol==\"shadowsocks\") | length" "$CONFIG" 2>/dev/null || echo 0)
     if test "$s_count" -gt 0; then
-        local s_port=$(jq -r '.inbounds[] | select(.protocol=="shadowsocks") | .port' "$CONFIG" 2>/dev/null)
-        local s_pass=$(jq -r '.inbounds[] | select(.protocol=="shadowsocks") | .settings.password' "$CONFIG" 2>/dev/null)
-        local s_method=$(jq -r '.inbounds[] | select(.protocol=="shadowsocks") | .settings.method' "$CONFIG" 2>/dev/null)
+        local s_port=$(jq -r ".inbounds${L_B}${R_B} | select(.protocol==\"shadowsocks\") | .port" "$CONFIG" 2>/dev/null)
+        local s_pass=$(jq -r ".inbounds${L_B}${R_B} | select(.protocol==\"shadowsocks\") | .settings.password" "$CONFIG" 2>/dev/null)
+        local s_method=$(jq -r ".inbounds${L_B}${R_B} | select(.protocol==\"shadowsocks\") | .settings.method" "$CONFIG" 2>/dev/null)
         
         if test -n "$s_port" && test "$s_port" != "null"; then
             hr
@@ -366,6 +374,7 @@ do_summary() {
             echo -e "\n  ${cyan}通用链接:${none} \n  $link_ss\n"
             
             if command -v qrencode >/dev/null 2>&1; then
+                echo -e "  ${cyan}手机扫码导入 (缩小版 50%):${none}"
                 qrencode -t UTF8 "$link_ss"
             fi
         fi
@@ -383,11 +392,15 @@ do_status_menu() {
         hr
         read -rp "选择: " s
         case "$s" in
-            1) systemctl status xray --no-pager; read -p "Enter..." ;;
+            1) systemctl status xray --no-pager; read -rp "按 Enter 继续..." _ ;;
             2) 
                 echo -e "\n  公网 IP: ${green}$SERVER_IP${none}"
                 hr
-                ss -tlnp | grep xray
+                echo -e "  DNS 解析配置: "
+                grep "^nameserver" /etc/resolv.conf | awk '{print "    " $0}'
+                hr
+                echo -e "  Xray 监听端口: "
+                ss -tlnp | grep xray | awk '{print "    " $4}'
                 read -rp "按 Enter 继续..." _ ;;
             3) 
                 if ! command -v vnstat >/dev/null 2>&1; then 
@@ -402,7 +415,7 @@ do_status_menu() {
     done
 }
 
-# -- 核弹级卸载模块 --
+# -- 核弹级卸载模块 (终极自毁程序) --
 do_uninstall() {
     title "清理：彻底卸载 Xray 及所有痕迹"
     read -rp "确定要彻底删除 Xray 及其配置文件、快捷指令和当前脚本吗？(输入y确定): " confirm
@@ -423,6 +436,7 @@ do_uninstall() {
     rm -rf "$CONFIG_DIR" "$DAT_DIR" "$XRAY_BIN" >/dev/null 2>&1
     rm -rf /var/log/xray* >/dev/null 2>&1
     
+    # 终极自毁：删除快捷方式与脚本自身
     rm -f "/usr/local/bin/xrv" >/dev/null 2>&1
     rm -f "$SCRIPT_PATH" >/dev/null 2>&1
     
@@ -430,18 +444,18 @@ do_uninstall() {
     exit 0
 }
 
-# -- 安装主逻辑 (支持多协议注入) --
+# -- 安装主逻辑 (防吞噬代币引擎) --
 do_install() {
-    title "Pinnacle Fusion: 核心部署"
+    title "Pinnacle Ascendant: 核心部署"
     preflight
     
-    echo -e "  ${cyan}选择要安装的代理协议：${none}"
+    echo -e "  ${cyan}请选择要安装的代理协议：${none}"
     echo "  1) VLESS-Reality (推荐, 强力防封)"
     echo "  2) Shadowsocks (经典, 兼容好)"
     echo "  3) 两个都安装 (双管齐下)"
     read -rp "  请输入编号: " proto_choice
     proto_choice=${proto_choice:-1}
-    
+
     # 采集 VLESS 参数
     if test "$proto_choice" = "1" || test "$proto_choice" = "3"; then
         while true; do
@@ -466,26 +480,38 @@ do_install() {
         done
         ss_pass=$(gen_ss_pass)
         ss_method=$(_select_ss_method)
+        # 如果单独选 SS 也要输节点名
+        if test "$proto_choice" = "2"; then
+            read -rp "请输入节点别名 (默认 xp-reality): " input_remark
+            REMARK_NAME=${input_remark:-xp-reality}
+        fi
     fi
 
     print_magenta ">>> 正在静默拉取官方核心组件 (已屏蔽冗余日志)..."
     bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install >/dev/null 2>&1
 
-    # 初始化最基础的无报错 JSON 模板
-    cat > "$CONFIG" <<'EOF'
+    # 【ASCII Hex 物理防吞噬引擎】：用代币 _L_ 和 _R_ 写入模板，屏蔽渲染器攻击
+    cat > "$CONFIG.tmp" <<EOF
 {
   "log": { "loglevel": "warning" },
   "routing": {
     "domainStrategy": "IPIfNonMatch",
-    "rules":, "outboundTag": "block", "_enabled": true },
-      { "type": "field", "ip":, "outboundTag": "block", "_enabled": true },
-      { "type": "field", "domain":, "outboundTag": "block", "_enabled": true }
-    ]
+    "rules": _L_
+      { "outboundTag": "block", "_enabled": true, "protocol": _L_ "bittorrent" _R_ },
+      { "outboundTag": "block", "_enabled": true, "ip": _L_ "geoip:cn" _R_ },
+      { "outboundTag": "block", "_enabled": true, "domain": _L_ "geosite:category-ads-all" _R_ }
+    _R_
   },
-  "inbounds": [],
-  "outbounds":
+  "inbounds": _L_ _R_,
+  "outbounds": _L_
+    { "protocol": "freedom", "tag": "direct" },
+    { "protocol": "blackhole", "tag": "block" }
+  _R_
 }
 EOF
+    # 底层恢复为原生 JSON 数组
+    sed "s/_L_/${L_B}/g; s/_R_/${R_B}/g" "$CONFIG.tmp" > "$CONFIG"
+    rm -f "$CONFIG.tmp"
 
     # 动态注入 VLESS
     if test "$proto_choice" = "1" || test "$proto_choice" = "3"; then
@@ -496,21 +522,47 @@ EOF
         local sid=$(head -c 8 /dev/urandom | xxd -p | tr -d '\n')
         
         echo "$pub" > "$PUBKEY_FILE"
-        _safe_jq_write '.inbounds +=, "decryption": "none" },
+        
+        local VLESS_INBOUND='{
+            "tag": "vless-reality",
+            "listen": "0.0.0.0",
+            "port": '$LISTEN_PORT',
+            "protocol": "vless",
+            "settings": {
+                "clients": _L_ { "id": "'$uuid'", "flow": "xtls-rprx-vision" } _R_,
+                "decryption": "none"
+            },
             "streamSettings": {
-                "network": "tcp", "security": "reality",
+                "network": "tcp",
+                "security": "reality",
                 "realitySettings": {
-                    "dest": "'$BEST_SNI':443", "serverNames":,
-                    "privateKey": "'$priv'", "publicKey": "'$pub'", "shortIds":
+                    "dest": "'$BEST_SNI':443",
+                    "serverNames": _L_ "'$BEST_SNI'" _R_,
+                    "privateKey": "'$priv'",
+                    "publicKey": "'$pub'",
+                    "shortIds": _L_ "'$sid'" _R_
                 }
             },
-            "sniffing": { "enabled": true, "destOverride": }
-        }]'
+            "sniffing": { "enabled": true, "destOverride": _L_ "http", "tls", "quic" _R_ }
+        }'
+        VLESS_INBOUND=$(echo "$VLESS_INBOUND" | sed "s/_L_/${L_B}/g; s/_R_/${R_B}/g")
+        _safe_jq_write ".inbounds += ${L_B} ${VLESS_INBOUND} ${R_B}"
     fi
 
     # 动态注入 SS
     if test "$proto_choice" = "2" || test "$proto_choice" = "3"; then
-        _safe_jq_write '.inbounds +='
+        local SS_INBOUND='{
+            "tag": "shadowsocks",
+            "listen": "0.0.0.0",
+            "port": '$ss_port',
+            "protocol": "shadowsocks",
+            "settings": {
+                "method": "'$ss_method'",
+                "password": "'$ss_pass'",
+                "network": "tcp,udp"
+            }
+        }'
+        _safe_jq_write ".inbounds += ${L_B} ${SS_INBOUND} ${R_B}"
     fi
 
     chmod -R 755 "$CONFIG_DIR" >/dev/null 2>&1
@@ -529,7 +581,7 @@ main_menu() {
     while true; do
         clear
         echo -e "${blue}===================================================${none}"
-        echo -e "  ${magenta}Xray G7G38 The Pinnacle Fusion Edition${none}"
+        echo -e "  ${magenta}Xray G7G39 The Pinnacle Ascendant Edition${none}"
         local svc=$(systemctl is-active xray 2>/dev/null || echo "inactive")
         if test "$svc" = "active"; then svc="${green}运行中${none}"; else svc="${red}停止${none}"; fi
         echo -e "  状态: $svc | 快捷指令: ${cyan}xrv${none}"
@@ -540,7 +592,7 @@ main_menu() {
         echo "  4) 更新 Geo 规则库"
         echo "  5) 屏蔽规则管理 (BT/广告拦截)"
         echo -e "  ${cyan}6) 无感热切 SNI 矩阵 (带 CF 探测)${none}"
-        echo "  8) 彻底卸载 (清空一切痕迹)"
+        echo "  8) 彻底卸载 (清空一切痕迹并自毁)"
         echo "  9) 运行状态 (服务/IP/流量统计)"
         echo "  0) 退出"
         hr
@@ -551,7 +603,7 @@ main_menu() {
             3) do_summary; read -rp "Enter 继续..." _ ;;
             4) print_magenta ">>> 正在更新规则库..."; bash -c "$(curl -fsSL https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh)" @ install-geodata >/dev/null 2>&1; systemctl restart xray >/dev/null 2>&1; info "Geo 更新成功" ;;
             5) _global_block_rules ;;
-            6) choose_sni && _safe_jq_write '(.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings.serverNames) = | (.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings.dest) = "'"$BEST_SNI"':443"' && systemctl restart xray >/dev/null 2>&1 && do_summary && read -rp "Enter 继续..." _ ;;
+            6) choose_sni && _safe_jq_write "(.inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .streamSettings.realitySettings.serverNames) = ${L_B} \"$BEST_SNI\" ${R_B} | (.inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .streamSettings.realitySettings.dest) = \"$BEST_SNI:443\"" && systemctl restart xray >/dev/null 2>&1 && do_summary && read -rp "Enter 继续..." _ ;;
             8) do_uninstall ;;
             9) do_status_menu ;;
             0) exit 0 ;;
