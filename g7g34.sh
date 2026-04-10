@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # ============================================================
-# 脚本名称: g7g33.sh (The Absolute Zenith Edition)
+# 脚本名称: g7g34.sh (The Absolute Zenith Edition)
 # 快捷方式: xrv
 # 终极修复: 
-#   1. 物理级解决 Markdown 渲染吞噬中括号 [ ] 的毁灭性 Bug，重构安全 JSON 写入模板。
-#   2. 修复 jq 注入语法的闭合逻辑，恢复无感热切 SNI 与 UUID 增删功能。
-#   3. 支持 1-65535 自定义端口，屏蔽官方冗余日志，清理幽灵残留。
+#   1. 恢复标准 JSON 数组格式，彻底解决配置解析失败的 Bug。
+#   2. VLESS 监听端口支持回车默认 443，交互更加人性化。
+#   3. 菜单排版精简，核弹级卸载逻辑精准清理一切残留痕迹。
+#   4. 130+ 实体矩阵 + 原生探活算法 + ASCII 二维码完美融合。
 # ============================================================
 
 # 必须用 bash 运行
 if test -z "$BASH_VERSION"; then
-    echo "错误: 请用 bash 运行此脚本: bash g7g33.sh"
+    echo "错误: 请用 bash 运行此脚本: bash g7g34.sh"
     exit 1
 fi
 
@@ -83,14 +84,13 @@ preflight() {
     SERVER_IP=$(curl -s -4 --connect-timeout 5 https://api.ipify.org || curl -s -4 --connect-timeout 5 https://ifconfig.me || echo "获取失败")
 }
 
-# -- 核心：130+ 实体 SNI 扫描引擎 (纯字符串流处理，防吞噬) --
+# -- 核心：130+ 实体 SNI 扫描引擎 (原生流处理) --
 run_sni_scanner() {
     title "雷达嗅探：全量 130+ 实体矩阵探测"
     print_yellow "正在逐一异步握手以建立战备缓存，约耗时 60 秒...\n"
     
     mkdir -p "$CONFIG_DIR" 2>/dev/null
     
-    # 纯字符串列表，彻底抛弃 Bash 数组，杜绝渲染 Bug
     local sni_list="www.maersk.com www.msc.com www.cma-cgm.com www.hapag-lloyd.com \
     www.michelin.com www.bridgestone.com www.goodyear.com www.pirelli.com \
     www.sony.com www.sony.net www.panasonic.com www.canon.com \
@@ -143,7 +143,7 @@ run_sni_scanner() {
         fi
     done
 
-    # 原生 sort 排序
+    # Linux 原生排序
     if test -s "$tmp_sni"; then
         sort -n "$tmp_sni" | head -n 10 | awk '{print $2, $1}' > "$SNI_CACHE_FILE"
     else
@@ -157,7 +157,7 @@ run_sni_scanner() {
 choose_sni() {
     while true; do
         if test -f "$SNI_CACHE_FILE"; then
-            echo -e "\n  ${cyan}${none}"
+            echo -e "\n  ${cyan}【战备缓存：极速 Top 10】${none}"
             local idx=1
             while read -r s t; do
                 echo -e "  $idx) $s (${cyan}${t}ms${none})"
@@ -204,7 +204,7 @@ validate_port() {
     return 1
 }
 
-# -- 安全写入配置 (jq 无括号安全注入) --
+# -- 安全写入配置 (jq 原子操作) --
 _safe_jq_write() {
     local filter="$1"
     local tmp=$(mktemp)
@@ -223,7 +223,7 @@ do_user_manager() {
         title "UUID 权限与管理"
         if ! test -f "$CONFIG"; then error "未发现配置"; return; fi
 
-        local clients=$(jq -r '.inbounds.settings.clients[] | .id' "$CONFIG" 2>/dev/null)
+        local clients=$(jq -r '.inbounds[] | select(.protocol=="vless") | .settings.clients[] | .id' "$CONFIG" 2>/dev/null)
         if test -z "$clients" || test "$clients" = "null"; then error "未发现 VLESS 节点"; return; fi
 
         local tmp_users="/tmp/xray_users.txt"
@@ -242,8 +242,7 @@ do_user_manager() {
         
         if test "$uopt" = "a"; then
             local nu=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || $XRAY_BIN uuid)
-            # 安全无缺漏 jq 注入
-            _safe_jq_write '.inbounds.settings.clients +='
+            _safe_jq_write '(.inbounds[] | select(.protocol=="vless") | .settings.clients) +='
             systemctl restart xray; info "已新增: $nu"
             
         elif test "$uopt" = "d"; then
@@ -254,7 +253,7 @@ do_user_manager() {
             else
                 local target_uuid=$(awk -v id="$dnum" '$1==id {print $2}' "$tmp_users")
                 if test -n "$target_uuid"; then
-                    _safe_jq_write '.inbounds.settings.clients |= map(select(.id != "'"$target_uuid"'"))'
+                    _safe_jq_write '(.inbounds[] | select(.protocol=="vless") | .settings.clients) |= map(select(.id != "'"$target_uuid"'"))'
                     systemctl restart xray; info "已成功删除。"
                 else
                     error "序号无效。"
@@ -272,15 +271,15 @@ do_user_manager() {
 do_summary() {
     if ! test -f "$CONFIG"; then return; fi
     
-    local uuid=$(jq -r '.inbounds.settings.clients.id' "$CONFIG" 2>/dev/null)
-    local port=$(jq -r '.inbounds.port' "$CONFIG" 2>/dev/null)
-    local sni=$(jq -r '.inbounds.streamSettings.realitySettings.serverNames' "$CONFIG" 2>/dev/null)
-    local sid=$(jq -r '.inbounds.streamSettings.realitySettings.shortIds' "$CONFIG" 2>/dev/null)
-    local pub=$(jq -r '.inbounds.streamSettings.realitySettings.publicKey' "$CONFIG" 2>/dev/null)
+    local uuid=$(jq -r '.inbounds[] | select(.protocol=="vless") | .settings.clients.id' "$CONFIG" 2>/dev/null)
+    local port=$(jq -r '.inbounds[] | select(.protocol=="vless") | .port' "$CONFIG" 2>/dev/null)
+    local sni=$(jq -r '.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings.serverNames' "$CONFIG" 2>/dev/null)
+    local sid=$(jq -r '.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings.shortIds' "$CONFIG" 2>/dev/null)
+    local pub=$(jq -r '.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings.publicKey' "$CONFIG" 2>/dev/null)
     
     if test -z "$uuid" || test "$uuid" = "null"; then return; fi
 
-    title "The Absolute Zenith 节点详情"
+    title "The Zenith 节点详情"
     printf "  ${yellow}%-16s${none} %s\n" "协议框架:" "VLESS-Reality-Vision"
     printf "  ${yellow}%-16s${none} %s\n" "备注名称:" "$REMARK_NAME"
     printf "  ${yellow}%-16s${none} %s\n" "外网 IP:" "$SERVER_IP"
@@ -300,9 +299,9 @@ do_summary() {
     fi
 }
 
-# -- 核弹级卸载模块 --
+# -- 卸载模块 (精准清理残留) --
 do_uninstall() {
-    title "核弹级清理：彻底卸载 Xray 及所有痕迹"
+    title "清理：彻底卸载 Xray 及所有痕迹"
     read -rp "确定要彻底删除 Xray 及其配置文件、日志和守护进程吗？(输入y确定): " confirm
     if test "$confirm" != "y"; then return; fi
     
@@ -325,7 +324,7 @@ do_uninstall() {
     exit 0
 }
 
-# -- 安装主逻辑 (防吞噬垂直 JSON 模板) --
+# -- 安装主逻辑 (标准 JSON) --
 do_install() {
     title "Absolute Zenith: 核心部署"
     preflight
@@ -340,7 +339,7 @@ do_install() {
         print_red "端口无效，请输入 1-65535 之间的数字。"
     done
 
-    read -rp "请输入节点别名: " input_remark
+    read -rp "请输入节点别名 (默认 xp-reality): " input_remark
     REMARK_NAME=${input_remark:-xp-reality}
 
     choose_sni || return
@@ -354,7 +353,7 @@ do_install() {
     local uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || $XRAY_BIN uuid)
     local sid=$(head -c 8 /dev/urandom | xxd -p | tr -d '\n')
 
-    # 【防渲染吞噬警告】：以下 JSON 进行垂直排版与强制加空格，绝对防止被识别为 Markdown 标签
+    # 标准合规 JSON 数组写法，保证 Xray 核心顺利解析
     cat > "$CONFIG" <<EOF
 {
   "log": {
@@ -421,7 +420,7 @@ main_menu() {
     while true; do
         clear
         echo -e "${blue}===================================================${none}"
-        echo -e "  ${magenta}Xray G7G33 The Absolute Zenith Edition${none}"
+        echo -e "  ${magenta}Xray G7G34 The Absolute Zenith Edition${none}"
         local svc=$(systemctl is-active xray 2>/dev/null || echo "inactive")
         if test "$svc" = "active"; then svc="${green}运行中${none}"; else svc="${red}停止${none}"; fi
         echo -e "  状态: $svc | 快捷指令: ${cyan}xrv${none}"
