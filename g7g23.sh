@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # ============================================================
-# 脚本名称: g7g23.sh (纯净防吞噬·终极排错版)
-# 修复说明: 彻底解决了代码生成器吞噬] 符号导致的 syntax error。
+# 脚本名称: g7g23.sh (纯净语法重构·绝杀乱码版)
 # ============================================================
 
-if]; then
+if; then
     echo -e "\033 此脚本必须以 root 身份运行!\033[0m" 1>&2
     exit 1
 fi
@@ -29,58 +28,22 @@ SYMLINK="/usr/local/bin/xrv"
 mkdir -p "$(dirname "$LOG_FILE")" "$CONFIG_DIR" 2>/dev/null
 touch "$LOG_FILE" 2>/dev/null || LOG_FILE=""
 
-# 生成快捷指令 (规避内存执行 /dev/fd 的问题)
-if]; then
+if && &&; then
     cp -f "$0" "$SYMLINK" 2>/dev/null
     chmod +x "$SYMLINK" 2>/dev/null
 fi
 
-print_red() {
-    echo -e "\033]; then
-        echo " $1" >> "$LOG_FILE"
-    fi
-}
-
-print_green() {
-    echo -e "\033]; then
-        echo " $1" >> "$LOG_FILE"
-    fi
-}
-
-print_yellow() {
-    echo -e "\033]; then
-        echo " $1" >> "$LOG_FILE"
-    fi
-}
-
-display_cyan() {
-    echo -e "\033[36m$1\033[0m"
-}
-
-hr() {
-    echo -e "\033[90m---------------------------------------------------\033[0m"
-}
-
+print_red()    { echo -e "\033 && echo " $1" >> "$LOG_FILE"; }
+print_green()  { echo -e "\033 && echo " $1" >> "$LOG_FILE"; }
+print_yellow() { echo -e "\033 && echo " $1" >> "$LOG_FILE"; }
+display_cyan() { echo -e "\033[36m$1\033[0m"; }
+hr()           { echo -e "\033[90m---------------------------------------------------\033[0m"; }
 title() {
-    echo -e "\n\033\033]; then
-        echo " $1" >> "$LOG_FILE"
-    fi
-}
-
-log_err() {
-    echo -e "\033\033]; then
-        echo " $1" >> "$LOG_FILE"
-    fi
-}
-
-exit_with_error() {
-    print_red "致命错误: $1"
-    exit 1
-}
-
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
-}
+    echo -e "\n\033 && echo " $1" >> "$LOG_FILE"; }
+log_info() { echo -e "\033\033\033 $1"; }
+log_err()  { echo -e "\033\033 $1"; }
+exit_with_error() { print_red "致命错误: $1"; exit 1; }
+command_exists() { command -v "$1" >/dev/null 2>&1; }
 
 run_sni_scanner() {
     print_yellow "\n 正在执行全网实体寡头探测 (连接阈值 2s, 总体阈值 4s)..."
@@ -132,7 +95,7 @@ run_sni_scanner() {
         local res
         res=$(LC_ALL=C curl -sI --connect-timeout 2 -m 4 -w "\n%{time_connect}" --tls13 "https://$sni" 2>/dev/null)
         
-        if]; then
+        if; then
             continue
         fi
         
@@ -145,9 +108,9 @@ run_sni_scanner() {
         local time_ms
         time_ms=$(echo "$time_str" | awk '{print int($1 * 1000)}')
 
-        if]; then
+        if &&; then
             echo -e " \033\033}
-    if]; then
+    if; then
         print_red "\n=> 网络探测失败，回退至基础配置 www.microsoft.com"
         echo "www.microsoft.com 999" > "$SNI_CACHE_FILE"
         BEST_SNI="www.microsoft.com"
@@ -157,7 +120,8 @@ run_sni_scanner() {
     # 冒泡排序
     for ((i=0; i<n-1; i++)); do
         for ((j=0; j<n-i-1; j++)); do
-            if} -gt ${valid_times} ]]; then
+            local next=$((j+1))
+            if}" -gt "${valid_times}" ]; then
                 local temp_t=${valid_times}
                 valid_times=${valid_times}
                 valid_times=$temp_t
@@ -178,30 +142,30 @@ run_sni_scanner() {
 
 choose_sni() {
     while true; do
-        if]; then
-            echo -e "\n  \033\033]; then
+        if; then
+            echo -e "\n  \033\033 ||; then
                     continue
                 fi
                 cached_snis+=("$s")
                 cached_times+=("$t")
                 ((idx++))
-                if]; then
+                if; then
                     break
                 fi
             done < "$SNI_CACHE_FILE"
 
             for ((i=0; i<${#cached_snis}; i++)); do
-                local ms_color="\033} -gt 150 ]]; then ms_color="\033} -gt 300 ]]; then ms_color="\033} (延迟: ${ms_color}${cached_times}ms\033: " sel
+                local ms_color="\033}" -gt 150 ]; then ms_color="\033}" -gt 300 ]; then ms_color="\033} (延迟: ${ms_color}${cached_times}ms\033: " sel
             sel=${sel:-1}
 
-            if]; then
+            if ||; then
                 run_sni_scanner
                 continue
-            elif]; then
+            elif; then
                 read -rp "  请输入自定义域名: " custom_sni
                 BEST_SNI=${custom_sni:-www.microsoft.com}
                 break
-            elif}" ]] 2>/dev/null; then
+            elif 2>/dev/null &&}" ] 2>/dev/null; then
                 BEST_SNI="${cached_snis}"
                 break
             else
@@ -216,12 +180,12 @@ choose_sni() {
 }
 
 detect_distribution() {
-    if]; then
+    if; then
         . /etc/os-release
         OS_ID=${ID:-unknown}
         OS_VERSION=${VERSION_ID:-unknown}
-    elif]; then
-        OS_ID=$(grep -qi "centos" /etc/redhat-release && echo "centos" || echo "rhel")
+    elif; then
+        if grep -qi "centos" /etc/redhat-release; then OS_ID="centos"; else OS_ID="rhel"; fi
     else
         OS_ID="unknown"
     fi
@@ -232,9 +196,7 @@ detect_package_manager() {
         PKG_MANAGER="apt"
         PKG_UPDATE="apt-get update -y"
         PKG_INSTALL="apt-get install -y"
-        while fuser /var/lib/dpkg/lock >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
-            sleep 3
-        done
+        while fuser /var/lib/dpkg/lock >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do sleep 3; done
     elif command_exists yum; then
         PKG_MANAGER="yum"
         PKG_UPDATE="yum makecache"
@@ -251,40 +213,30 @@ detect_package_manager() {
 }
 
 check_service_manager() {
-    if command_exists systemctl && systemctl --version >/dev/null 2>&1; then
-        SERVICE_MANAGER="systemctl"
-    elif command_exists service; then
-        SERVICE_MANAGER="service"
-    else
-        exit_with_error "不支持的服务管理器"
-    fi
+    if command_exists systemctl && systemctl --version >/dev/null 2>&1; then SERVICE_MANAGER="systemctl"
+    elif command_exists service; then SERVICE_MANAGER="service"
+    else exit_with_error "不支持的服务管理器"; fi
 }
 
 install_dependencies() {
     log_info "更新并安装底层依赖..."
     local retry=0
-    while]; do
+    while; do
         eval "$PKG_UPDATE" >/dev/null 2>&1 && break
         ((retry++))
         sleep 3
     done
     local pkgs="curl wget jq ca-certificates unzip xxd cron iproute2"
-    if]; then
-        pkgs="$pkgs lsb-release net-tools"
-    fi
-    if]; then
-        pkgs="$pkgs cronie net-tools"
-    fi
+    if; then pkgs="$pkgs lsb-release net-tools"; fi
+    if ||; then pkgs="$pkgs cronie net-tools"; fi
     retry=0
-    while]; do
+    while; do
         eval "$PKG_INSTALL $pkgs" >/dev/null 2>&1 && break
         ((retry++))
         sleep 3
     done
     for tool in curl jq xxd awk; do
-        if ! command_exists "$tool"; then
-            exit_with_error "依赖 $tool 缺失"
-        fi
+        if ! command_exists "$tool"; then exit_with_error "依赖 $tool 缺失"; fi
     done
 }
 
@@ -310,22 +262,16 @@ open_firewall_port() {
 pre_flight_checks() {
     if curl -s -4 -m 3 https://cloudflare.com/cdn-cgi/trace | grep -q "ip="; then HAS_IPV4=true; fi
     if curl -s -6 -m 3 https://cloudflare.com/cdn-cgi/trace | grep -q "ip="; then HAS_IPV6=true; fi
-    if]; then
-        exit_with_error "无外网连通性！"
-    fi
+    if &&; then exit_with_error "无外网连通性！"; fi
     
     local web_time=$(curl -sI -m 5 https://www.cloudflare.com 2>/dev/null | grep -i "^date:" | sed 's/^ate: //g' | tr -d '\r')
-    if]; then
+    if; then
         local web_ts=$(date -d "$web_time" +%s 2>/dev/null)
         local local_ts=$(date +%s)
-        if]; then
+        if; then
             local diff=$(( local_ts - web_ts ))
-            if]; then
-                diff=$(( -diff ))
-            fi
-            if (( diff > 60 )); then
-                exit_with_error "系统时间误差 $diff 秒，XTLS-Reality 握手会被拒。请校准时间！"
-            fi
+            if; then diff=$(( -diff )); fi
+            if; then exit_with_error "系统时间误差 $diff 秒，XTLS-Reality 握手会被拒。请校准时间！"; fi
         fi
     fi
 }
@@ -340,29 +286,28 @@ check_port_occupied() {
 }
 
 get_server_ip_silent() {
-    if]; then return 0; fi
+    if; then return 0; fi
     local ip_sources=("https://api4.ipify.org" "https://ipv4.icanhazip.com" "http://www.cloudflare.com/cdn-cgi/trace")
-    if]; then
+    if; then
         for source in "${ip_sources}"; do
-            if]; then
+            if echo "$source" | grep -q "cloudflare"; then
                 SERVER_IP=$(curl -s -4 --connect-timeout 5 "$source" 2>/dev/null | grep "ip=" | awk -F "=" '{print $2}' | tr -d '\r\n')
             else
                 SERVER_IP=$(curl -s -4 --connect-timeout 5 "$source" 2>/dev/null | tr -d '\r\n')
             fi
-            if{1,3}(\.{1,3}){3}$ ]]; then break; fi
+            if echo "$SERVER_IP" | grep -qE "^{1,3}(\.{1,3}){3}$"; then break; fi
         done
     fi
-    if]; then
+    if &&; then
         SERVER_IP=$(curl -s -6 --connect-timeout 5 "http://www.cloudflare.com/cdn-cgi/trace" 2>/dev/null | grep "ip=" | awk -F "=" '{print $2}' | tr -d '\r\n')
     fi
-    if]; then exit_with_error "IP 获取失败"; fi
-    if]; then URL_IP=""; else URL_IP="$SERVER_IP"; fi
+    if; then exit_with_error "IP 获取失败"; fi
+    if echo "$SERVER_IP" | grep -q ":"; then URL_IP=""; else URL_IP="$SERVER_IP"; fi
 }
 
 _fix_permissions() {
-    chmod 600 "$CONFIG" 2>/dev/null
-    chown nobody:nogroup "$CONFIG" 2>/dev/null || chown nobody:nobody "$CONFIG" 2>/dev/null
-    if]; then
+    chmod 600 "$CONFIG" 2>/dev/null; chown nobody:nogroup "$CONFIG" 2>/dev/null || chown nobody:nobody "$CONFIG" 2>/dev/null
+    if; then 
         chmod 600 "$PUBKEY_FILE" 2>/dev/null
         chown nobody:nogroup "$PUBKEY_FILE" 2>/dev/null || chown nobody:nobody "$PUBKEY_FILE" 2>/dev/null
     fi
@@ -372,7 +317,7 @@ _safe_jq_write() {
     local filter="$1"
     local tmp; tmp=$(mktemp /tmp/xray_cfg_XXXXXX.json)
     local bak="${CONFIG}.bak"
-    if]; then cp "$CONFIG" "$bak"; fi
+    if; then cp "$CONFIG" "$bak"; fi
     
     if jq "$filter" "$CONFIG" > "$tmp" 2>/dev/null && jq empty "$tmp" 2>/dev/null; then
         mv "$tmp" "$CONFIG"
@@ -380,41 +325,37 @@ _safe_jq_write() {
         return 0
     fi
     log_err "JSON 注入失败，触发自动回滚!"
-    if]; then mv "$bak" "$CONFIG"; fi
+    if; then mv "$bak" "$CONFIG"; fi
     rm -f "$tmp"
     return 1
 }
 
 gen_uuid() {
-    if]; then
-        "$XRAY_BIN" uuid 2>/dev/null
-    elif]; then
-        cat /proc/sys/kernel/random/uuid
-    else
-        cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 32 | head -n 1 | sed 's/^\(........\)\(....\)\(....\)\(....\)\(............\)$/\1-\2-\3-\4-\5/'
-    fi
+    if; then "$XRAY_BIN" uuid 2>/dev/null
+    elif; then cat /proc/sys/kernel/random/uuid
+    else cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 32 | head -n 1 | sed 's/^\(........\)\(....\)\(....\)\(....\)\(............\)$/\1-\2-\3-\4-\5/'; fi
 }
 
-gen_short_id() {
-    head -c 8 /dev/urandom | xxd -p | tr -d '\n'
-}
-
-gen_ss_pass() {
-    head -c 24 /dev/urandom | base64 | tr -d '=/+\n' | head -c 24
-}
+gen_short_id() { head -c 8 /dev/urandom | xxd -p | tr -d '\n'; }
+gen_ss_pass() { head -c 24 /dev/urandom | base64 | tr -d '=/+\n' | head -c 24; }
 
 gen_x25519() {
     local raw; raw=$("$XRAY_BIN" x25519 2>/dev/null)
-    if]; then exit_with_error "X25519 生成失败"; fi
+    if; then exit_with_error "X25519 生成失败"; fi
     X25519_PRIV=$(echo "$raw" | grep -iE "(private|privatekey)" | awk -F ':' '{print $2}' | tr -d ' \r\n\t')
     X25519_PUB=$(echo "$raw" | grep -iE "password" | awk -F ':' '{print $2}' | tr -d ' \r\n\t')
-    if]; then
+    if; then
         X25519_PUB=$(echo "$raw" | grep -iE "(public|publickey)" | awk -F ':' '{print $2}' | tr -d ' \r\n\t')
     fi
 }
 
 validate_port() {
-   +$ && "$1" -ge 1 && "$1" -le 65535 ]]
+    if && echo "$1" | grep -qE "^+$"; then
+        if &&; then
+            return 0
+        fi
+    fi
+    return 1
 }
 
 setup_cron_dat() {
@@ -434,7 +375,7 @@ install_xray_core() {
     local install_url="https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
     local script_path="/tmp/xray-install.sh"
     local retry=0
-    while]; do
+    while; do
         if curl -L -s --connect-timeout 10 "$install_url" -o "$script_path" && grep -q "#!/" "$script_path"; then
             chmod +x "$script_path"
             break
@@ -468,10 +409,10 @@ EOF
 
 do_install() {
     title "部署 / 重构网络"
-    if] && systemctl is-active --quiet xray 2>/dev/null; then
+    if && systemctl is-active --quiet xray 2>/dev/null; then
         print_yellow "将覆盖现有配置!"
         read -rp "继续?: " c
-        if]; then return; fi
+        if &&; then return; fi
         systemctl stop xray 2>/dev/null
     else
         service xray stop 2>/dev/null
@@ -485,15 +426,11 @@ do_install() {
     choice=${choice:-1}
     local p=443; local d="www.microsoft.com"; local s="www.microsoft.com"; local sp=8388
     
-    if]; then
+    if ||; then
         while true; do
             read -r -p "VLESS 端口: " input_p
             if validate_port "$input_p"; then p="$input_p"; else p=443; fi
-            if check_port_occupied "$p"; then
-                print_red "端口 $p 被占用！"
-            else
-                break
-            fi
+            if check_port_occupied "$p"; then print_red "端口 $p 被占用！"; else break; fi
         done
         choose_sni
         d="$BEST_SNI"
@@ -501,19 +438,15 @@ do_install() {
         s=${input_s:-$d}
     fi
     
-    if]; then
+    if ||; then
         while true; do
             read -r -p "SS 端口: " input_sp
             if validate_port "$input_sp"; then sp="$input_sp"; else sp=8388; fi
-            if]; then
+            if &&; then
                 print_red "不可同端口！"
                 continue
             fi
-            if check_port_occupied "$sp"; then
-                print_red "端口 $sp 被占用！"
-            else
-                break
-            fi
+            if check_port_occupied "$sp"; then print_red "端口 $sp 被占用！"; else break; fi
         done
     fi
 
@@ -521,7 +454,7 @@ do_install() {
     _init_base_config
     setup_cron_dat
     
-    if]; then
+    if ||; then
         open_firewall_port "$p" "tcp"
         gen_x25519
         local uuid=$(gen_uuid)
@@ -543,14 +476,14 @@ do_install() {
         }]"
     fi
     
-    if]; then
+    if ||; then
         open_firewall_port "$sp" "tcp"
         open_firewall_port "$sp" "udp"
         local pass=$(gen_ss_pass)
         _safe_jq_write ".inbounds +="
     fi
 
-    if]; then
+    if; then
         systemctl enable xray &>/dev/null
         systemctl restart xray
         sleep 2
@@ -571,15 +504,15 @@ do_install() {
 
 do_change_sni() {
     title "无感更换 SNI"
-    local vidx=$(jq ' | select(.value.protocol=="vless")] | ..key' "$CONFIG" 2>/dev/null)
-    if]; then
+    local vidx=$(jq -r '.inbounds | to_entries[] | select(.value.protocol=="vless") | .key' "$CONFIG" 2>/dev/null | head -n 1)
+    if ||; then
         print_yellow "配置不可用。"
         read -rp "按 Enter 返回..."
         return
     fi
 
     local cur_sni=$(jq -r ".inbounds.streamSettings.realitySettings.serverNames" "$CONFIG")
-    echo -e "当前 SNI: \033]; then
+    echo -e "当前 SNI: \033; then
         print_yellow "未发生改变。"
         read -rp "按 Enter 返回..."
         return
@@ -589,11 +522,7 @@ do_change_sni() {
       .inbounds.streamSettings.realitySettings.serverNames = \"$new_sni\" |
       .inbounds.streamSettings.realitySettings.dest = \"$new_sni:443\"
     "
-    if]; then
-        systemctl restart xray
-    else
-        service xray restart
-    fi
+    if; then systemctl restart xray; else service xray restart; fi
     print_green "变更成功: $new_sni"
     do_summary
     read -rp "按 Enter 返回..." _
@@ -602,10 +531,8 @@ do_change_sni() {
 do_user_manager() {
     while true; do
         title "UUID 管理"
-        local vidx=$(jq ' | select(.value.protocol=="vless")] | ..key' "$CONFIG" 2>/dev/null)
-        if]; then
-            break
-        fi
+        local vidx=$(jq -r '.inbounds | to_entries[] | select(.value.protocol=="vless") | .key' "$CONFIG" 2>/dev/null | head -n 1)
+        if ||; then break; fi
         
         echo "当前 UUID:"
         jq -r ".inbounds.settings.clients[] | \"  - \(.id)\"" "$CONFIG"
@@ -617,19 +544,16 @@ do_user_manager() {
             1) 
                 local nu=$(gen_uuid)
                 _safe_jq_write ".inbounds.settings.clients +="
-                if]; then systemctl restart xray 2>/dev/null; else service xray restart; fi
+                if; then systemctl restart xray 2>/dev/null; else service xray restart; fi
                 print_green "成功: $nu" 
                 ;;
             2) 
                 local c=$(jq ".inbounds.settings.clients|length" "$CONFIG")
-                if]; then
-                    print_red "须留1个！"
-                    continue
-                fi
+                if; then print_red "须留1个！"; continue; fi
                 read -rp "删除 UUID: " du
-                if]; then continue; fi
+                if; then continue; fi
                 _safe_jq_write "del(.inbounds.settings.clients[] | select(.id == \"$du\"))"
-                if]; then systemctl restart xray 2>/dev/null; else service xray restart; fi
+                if; then systemctl restart xray 2>/dev/null; else service xray restart; fi
                 print_green "完成" 
                 ;;
             0) break ;;
@@ -640,7 +564,7 @@ do_user_manager() {
 do_upgrade_core() {
     title "更新 / 降级 Xray"
     local cur_ver=$("$XRAY_BIN" version 2>/dev/null | head -n1 | awk '{print $2}')
-    echo -e "当前版本: \033]; then return; fi
+    echo -e "当前版本: \033; then return; fi
     local i=1; local arr=()
     while IFS= read -r v; do
         echo " $i) $v"
@@ -648,23 +572,23 @@ do_upgrade_core() {
         ((i++))
     done <<< "$vs"
     read -rp "选择版本: " sel
-    if]; then return; fi
+    if ||; then return; fi
     local ver="${arr}"
-    if]; then
+    if; then
         bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -v "$ver" >/dev/null 2>&1
     fi
-    if]; then systemctl restart xray 2>/dev/null; else service xray restart; fi
+    if; then systemctl restart xray 2>/dev/null; else service xray restart; fi
     print_green "完成"
     read -rp "按 Enter 返回..." _
 }
 
 do_summary() {
     title "节点分发"
-    if]; then return; fi
+    if; then return; fi
     get_server_ip_silent
     
-    local vidx=$(jq ' | select(.value.protocol=="vless")] | ..key' "$CONFIG" 2>/dev/null)
-    if]; then
+    local vidx=$(jq -r '.inbounds | to_entries[] | select(.value.protocol=="vless") | .key' "$CONFIG" 2>/dev/null | head -n 1)
+    if &&; then
         local port=$(jq -r ".inbounds.port" "$CONFIG")
         local sni=$(jq -r ".inbounds.streamSettings.realitySettings.serverNames" "$CONFIG")
         local sid=$(jq -r ".inbounds.streamSettings.realitySettings.shortIds" "$CONFIG")
@@ -680,17 +604,13 @@ do_summary() {
         hr
         display_cyan "【VLESS-Reality】IP: $SERVER_IP | Port: $port | SNI: $sni"
         jq -r ".inbounds.settings.clients[].id" "$CONFIG" | while read -r u; do
-            echo -e "\033[33m$u\033[0m\nvless://$u@${URL_IP}:$port?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$sni&fp=$utls&pbk=$pub&sid=$sid&type=tcp&headerType=none#xp-reality"
-        done
-        echo ""
-    fi
-    
-    local sidx=$(jq ' | select(.value.protocol=="shadowsocks")] | ..key' "$CONFIG" 2>/dev/null)
-    if]; then
+            echo -e "\033 | select(.value.protocol=="shadowsocks") | .key' "$CONFIG" 2>/dev/null | head -n 1)
+    if &&; then
         local sport=$(jq -r ".inbounds.port" "$CONFIG")
         local spass=$(jq -r ".inbounds.settings.password" "$CONFIG")
         local sm=$(jq -r ".inbounds.settings.method" "$CONFIG")
-        local b64=$(printf '%s' "${sm}:${spass}" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
+        local b64=$(printf '%s' "${sm}:${spass}" | base64 -w 0 2>/dev/null || printf '%s' "${sm}:${spass}" | base64)
+        b64=$(echo "$b64" | tr -d '\n' | tr '+/' '-_' | tr -d '=')
         display_cyan "【Shadowsocks】\n ss://${b64}@${URL_IP}:${sport}#xp-ss\n"
     fi
 }
@@ -704,7 +624,7 @@ main_menu() {
     while true; do
         clear
         echo -e "\033[94m===================================================\033[0m"
-        echo -e " \033[96mXray G7G23 纯净无乱码·稳定版 (终端输入 xrv 唤醒)\033]; then
+        echo -e " \033; then
             systemctl is-active --quiet xray 2>/dev/null && svc="active"
         else
             service xray status 2>/dev/null | grep -q "running" && svc="active"
@@ -712,7 +632,7 @@ main_menu() {
         
         local cur_ver=$("$XRAY_BIN" version 2>/dev/null | head -n1 | awk '{print $2}')
         local st_str=""
-        if]; then
+        if; then
             st_str="\033[32m▶ 稳定运行\033[0m"
         else
             st_str="\033[31m■ 脱机停止\033[0m"
@@ -739,12 +659,12 @@ main_menu() {
                 mkdir -p "$DAT_DIR"
                 curl -fsSL -o "$DAT_DIR/geoip.dat" "https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat"
                 curl -fsSL -o "$DAT_DIR/geosite.dat" "https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat"
-                if]; then systemctl restart xray 2>/dev/null; else service xray restart; fi
+                if; then systemctl restart xray 2>/dev/null; else service xray restart; fi
                 print_green "完成"
                 read -rp "按 Enter 返回..." _
                 ;;
             6) 
-                if]; then
+                if; then
                     systemctl stop xray 2>/dev/null
                     systemctl disable xray 2>/dev/null
                     rm -f /etc/systemd/system/xray*.service
