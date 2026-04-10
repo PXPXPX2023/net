@@ -1,5 +1,4 @@
 #!/bin/bash
-# forum: https://1024.day
 # script: g7g2.sh (Optimized & Hardened Edition)
 
 # 确保以root用户运行
