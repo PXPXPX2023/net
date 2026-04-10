@@ -1,5 +1,6 @@
 #!/bin/bash
 # script: g7g2.sh (Optimized & Hardened Edition)
+#不要出现1024的字眼！！！我改成xp了！
 
 # 确保以root用户运行
 if [[ $EUID -ne 0 ]]; then
@@ -323,12 +324,12 @@ display_results() {
     echo -e " 目标网站(SNI)\t: \033[33m$SERVER_SNI\033[0m"
     echo -e " UUID 密钥\t: \033[33m$UUID\033[0m"
     echo -e " 公钥(PubKey)\t: \033[33m$RE_PUBLIC_KEY\033[0m"
-    echo -e " ShortId\t: 88"
+    echo -e " ShortId\t: 88"#ShortId要随机啊！你怎么写死了，千万不能写死！！！！！！
     echo -e " 流控协议\t: xtls-rprx-vision"
     display_green "=========================================="
     echo
     display_green "一键导入链接 (VLESS URL)："
-    echo "vless://$UUID@$SERVER_IP:$PORT_NUMBER?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$SERVER_SNI&fp=chrome&pbk=$RE_PUBLIC_KEY&sid=88&type=tcp&headerType=none#xp-reality"
+    echo "vless://$UUID@$SERVER_IP:$PORT_NUMBER?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$SERVER_SNI&fp=chrome&pbk=$RE_PUBLIC_KEY&sid=8#ShortId要随机啊！你怎么写死了，千万不能写死！！！！！！8&type=tcp&headerType=none#xp-reality"
     echo
 }
 
