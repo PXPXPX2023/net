@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
 # 脚本名称: g7g9.sh (Grandmaster Industrial Fusion Edition)
-# 论坛支持: https://xp.day
 # 核心增量与 Bug 修复: 
 #   1. 修复 IPv6 链接未被 [] 闭合导致的客户端解析崩溃问题。
 #   2. 修复 Vision Seed 输入非数字导致 jq JSON 结构断裂的致命 Bug。
@@ -59,7 +58,7 @@ exit_with_error() {
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
-# ----------------- 工业级系统检测 -----------------
+# ----------------- 系统检测 -----------------
 detect_distribution() {
     if [[ -f /etc/os-release ]]; then
         . /etc/os-release
@@ -546,7 +545,7 @@ main_menu() {
     while true; do
         clear
         echo -e "\033[94m===================================================\033[0m"
-        echo -e "     \033[96mXray G7G9 破茧大成版 (任意位置输入 xrv 唤醒)\033[0m"
+        echo -e "     \033[96mXray G7G9 版 (任意位置输入 xrv 唤醒)\033[0m"
         echo -e "\033[94m===================================================\033[0m"
         
         local svc="inactive"
