@@ -305,7 +305,7 @@ do_summary() {
 # -- 核弹级卸载模块 (屏蔽报错) --
 do_uninstall() {
     title "核弹级清理：彻底卸载 Xray 及所有痕迹"
-    read -rp "确定要彻底删除 Xray 及其配置文件、日志和守护进程吗？: " confirm
+    read -rp "确定要彻底删除 Xray 及其配置文件、日志和守护进程吗？(确定输入y，取消输入n ): " confirm
     if test "$confirm" != "y"; then return; fi
     
     print_magenta ">>> 正在停止并禁用 Xray 服务..."
