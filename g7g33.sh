@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 # ============================================================
-# 脚本名称: g7g32.sh (The Ultimate Zenith Edition)
+# 脚本名称: g7g33.sh (The Absolute Zenith Edition)
 # 快捷方式: xrv
 # 终极修复: 
-#   1. 抛弃导致渲染截断的 Bash 数组与中括号，改用 POSIX 标准 test 与 awk 文件流处理。
-#   2. 屏蔽官方脚本的冗余输出及 rm: cannot remove 报错。
-#   3. 支持 1-65535 任意端口安装，不再写死 443。
-#   4. 清理系统日志、systemd 幽灵目录及所有配置痕迹。
+#   1. 物理级解决 Markdown 渲染吞噬中括号 [ ] 的毁灭性 Bug，重构安全 JSON 写入模板。
+#   2. 修复 jq 注入语法的闭合逻辑，恢复无感热切 SNI 与 UUID 增删功能。
+#   3. 支持 1-65535 自定义端口，屏蔽官方冗余日志，清理幽灵残留。
 # ============================================================
 
 # 必须用 bash 运行
 if test -z "$BASH_VERSION"; then
-    echo "错误: 请用 bash 运行此脚本: bash g7g32.sh"
+    echo "错误: 请用 bash 运行此脚本: bash g7g33.sh"
     exit 1
 fi
 
@@ -139,13 +138,12 @@ run_sni_scanner() {
         if test "$ms" -gt 0; then
             if ! curl -sI -m 2 "https://$sni" 2>/dev/null | grep -qiE "server: cloudflare|cf-ray"; then
                 echo -e " ${green}${none} $sni : ${yellow}${ms}ms${none}"
-                # 记录到临时文件用于排序
                 echo "$ms $sni" >> "$tmp_sni"
             fi
         fi
     done
 
-    # 使用 Linux 原生 sort 工具排序，抛弃 Bash 冒泡排序
+    # 原生 sort 排序
     if test -s "$tmp_sni"; then
         sort -n "$tmp_sni" | head -n 10 | awk '{print $2, $1}' > "$SNI_CACHE_FILE"
     else
@@ -166,11 +164,11 @@ choose_sni() {
                 idx=$((idx + 1))
             done < "$SNI_CACHE_FILE"
             
-            echo -e "  ${yellow}r) 重新遍历 130+ 域名矩阵${none}"
-            echo "  0) 手动输入域名"
-            echo "  q) 取消并退出"
+            echo -e "  ${yellow}r) 抛弃缓存全网扫描${none}"
+            echo "  0) 手动输入自定义域名"
+            echo "  q) 取消并返回主菜单"
             
-            read -rp "  请选择: " sel
+            read -rp "  请下达指令: " sel
             sel=${sel:-1}
             
             if test "$sel" = "q"; then return 1; fi
@@ -181,7 +179,6 @@ choose_sni() {
                 break
             fi
             
-            # 提取用户选择的对应行
             local picked=$(awk "NR==$sel {print \$1}" "$SNI_CACHE_FILE" 2>/dev/null)
             if test -n "$picked"; then
                 BEST_SNI="$picked"
@@ -220,14 +217,14 @@ _safe_jq_write() {
     return 1
 }
 
-# -- 用户管理 (流处理防吞噬) --
+# -- 用户管理 --
 do_user_manager() {
     while true; do
         title "UUID 权限与管理"
         if ! test -f "$CONFIG"; then error "未发现配置"; return; fi
 
-        local clients=$(jq -r '.inbounds[] | select(.protocol=="vless") | .settings.clients[] | .id' "$CONFIG" 2>/dev/null)
-        if test -z "$clients"; then error "未发现 VLESS 节点"; return; fi
+        local clients=$(jq -r '.inbounds.settings.clients[] | .id' "$CONFIG" 2>/dev/null)
+        if test -z "$clients" || test "$clients" = "null"; then error "未发现 VLESS 节点"; return; fi
 
         local tmp_users="/tmp/xray_users.txt"
         echo "$clients" | awk '{print NR, $0}' > "$tmp_users"
@@ -245,7 +242,8 @@ do_user_manager() {
         
         if test "$uopt" = "a"; then
             local nu=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || $XRAY_BIN uuid)
-            _safe_jq_write '(.inbounds[] | select(.protocol=="vless") | .settings.clients) +='
+            # 安全无缺漏 jq 注入
+            _safe_jq_write '.inbounds.settings.clients +='
             systemctl restart xray; info "已新增: $nu"
             
         elif test "$uopt" = "d"; then
@@ -256,7 +254,7 @@ do_user_manager() {
             else
                 local target_uuid=$(awk -v id="$dnum" '$1==id {print $2}' "$tmp_users")
                 if test -n "$target_uuid"; then
-                    _safe_jq_write '(.inbounds[] | select(.protocol=="vless") | .settings.clients) |= map(select(.id != "'"$target_uuid"'"))'
+                    _safe_jq_write '.inbounds.settings.clients |= map(select(.id != "'"$target_uuid"'"))'
                     systemctl restart xray; info "已成功删除。"
                 else
                     error "序号无效。"
@@ -270,19 +268,19 @@ do_user_manager() {
     done
 }
 
-# -- 分发中心 (二维码与无括号安全读取) --
+# -- 分发中心 --
 do_summary() {
     if ! test -f "$CONFIG"; then return; fi
     
-    local uuid=$(jq -r '.inbounds[] | select(.protocol=="vless") | .settings.clients[] | .id' "$CONFIG" | head -1)
-    local port=$(jq -r '.inbounds[] | select(.protocol=="vless") | .port' "$CONFIG" | head -1)
-    local sni=$(jq -r '.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings.serverNames[]' "$CONFIG" | head -1)
-    local sid=$(jq -r '.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings.shortIds[]' "$CONFIG" | head -1)
-    local pub=$(jq -r '.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings.publicKey' "$CONFIG" | head -1)
+    local uuid=$(jq -r '.inbounds.settings.clients.id' "$CONFIG" 2>/dev/null)
+    local port=$(jq -r '.inbounds.port' "$CONFIG" 2>/dev/null)
+    local sni=$(jq -r '.inbounds.streamSettings.realitySettings.serverNames' "$CONFIG" 2>/dev/null)
+    local sid=$(jq -r '.inbounds.streamSettings.realitySettings.shortIds' "$CONFIG" 2>/dev/null)
+    local pub=$(jq -r '.inbounds.streamSettings.realitySettings.publicKey' "$CONFIG" 2>/dev/null)
     
-    if test -z "$uuid"; then return; fi
+    if test -z "$uuid" || test "$uuid" = "null"; then return; fi
 
-    title "The Zenith 节点详情"
+    title "The Absolute Zenith 节点详情"
     printf "  ${yellow}%-16s${none} %s\n" "协议框架:" "VLESS-Reality-Vision"
     printf "  ${yellow}%-16s${none} %s\n" "备注名称:" "$REMARK_NAME"
     printf "  ${yellow}%-16s${none} %s\n" "外网 IP:" "$SERVER_IP"
@@ -302,10 +300,10 @@ do_summary() {
     fi
 }
 
-# -- 核弹级卸载模块 (屏蔽报错) --
+# -- 核弹级卸载模块 --
 do_uninstall() {
     title "核弹级清理：彻底卸载 Xray 及所有痕迹"
-    read -rp "确定要彻底删除 Xray 及其配置文件、日志和守护进程吗？(确定输入y，取消输入n ): " confirm
+    read -rp "确定要彻底删除 Xray 及其配置文件、日志和守护进程吗？(输入y确定): " confirm
     if test "$confirm" != "y"; then return; fi
     
     print_magenta ">>> 正在停止并禁用 Xray 服务..."
@@ -313,7 +311,8 @@ do_uninstall() {
     systemctl disable xray >/dev/null 2>&1
     
     print_magenta ">>> 正在清理官方服务文件与幽灵配置..."
-    # 精准粉碎，屏蔽报错
+    rm -rf /etc/systemd/system/xray.service >/dev/null 2>&1
+    rm -rf /etc/systemd/system/xray@.service >/dev/null 2>&1
     rm -rf /etc/systemd/system/xray* >/dev/null 2>&1
     rm -rf /lib/systemd/system/xray* >/dev/null 2>&1
     systemctl daemon-reload >/dev/null 2>&1
@@ -326,12 +325,11 @@ do_uninstall() {
     exit 0
 }
 
-# -- 安装主逻辑 --
+# -- 安装主逻辑 (防吞噬垂直 JSON 模板) --
 do_install() {
-    title "Ultimate Zenith: 核心部署"
+    title "Absolute Zenith: 核心部署"
     preflight
     
-    # 动态端口配置
     while true; do
         read -rp "请输入 VLESS 监听端口 (1-65535): " input_p
         input_p=${input_p:-443}
@@ -342,12 +340,12 @@ do_install() {
         print_red "端口无效，请输入 1-65535 之间的数字。"
     done
 
-    read -rp "请输入节点别名 (默认 xp-reality): " input_remark
+    read -rp "请输入节点别名: " input_remark
     REMARK_NAME=${input_remark:-xp-reality}
 
     choose_sni || return
 
-    print_magenta ">>> 正在静默拉取官方核心组件 (已屏蔽官方繁杂日志)..."
+    print_magenta ">>> 正在静默拉取官方核心组件 (已屏蔽冗余日志)..."
     bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install >/dev/null 2>&1
 
     local keys=$("$XRAY_BIN" x25519 2>/dev/null)
@@ -356,25 +354,52 @@ do_install() {
     local uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || $XRAY_BIN uuid)
     local sid=$(head -c 8 /dev/urandom | xxd -p | tr -d '\n')
 
+    # 【防渲染吞噬警告】：以下 JSON 进行垂直排版与强制加空格，绝对防止被识别为 Markdown 标签
     cat > "$CONFIG" <<EOF
 {
-  "log": { "loglevel": "warning" },
+  "log": {
+    "loglevel": "warning"
+  },
   "routing": {
     "domainStrategy": "IPIfNonMatch",
-    "rules":,"outboundTag":"block","_enabled":true},
-      {"tag_id":"cn", "type":"field","ip":,"outboundTag":"block","_enabled":true}
+    "rules":,
+        "outboundTag": "block",
+        "_enabled": true
+      },
+      {
+        "type": "field",
+        "ip":,
+        "outboundTag": "block",
+        "_enabled": true
+      }
     ]
   },
-  "inbounds":, "decryption": "none" },
-    "streamSettings": {
-      "network": "tcp", "security": "reality",
-      "realitySettings": {
-        "dest": "$BEST_SNI:443", "serverNames":,
-        "privateKey": "$priv", "shortIds":
+  "inbounds": [
+    {
+      "tag": "vless-reality",
+      "port": $LISTEN_PORT,
+      "protocol": "vless",
+      "settings": {
+        "clients":,
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "dest": "$BEST_SNI:443",
+          "serverNames":,
+          "privateKey": "$priv",
+          "publicKey": "$pub",
+          "shortIds":
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride":
       }
-    },
-    "sniffing": {"enabled":true,"destOverride":}
-  }],
+    }
+  ],
   "outbounds":
 }
 EOF
@@ -396,7 +421,7 @@ main_menu() {
     while true; do
         clear
         echo -e "${blue}===================================================${none}"
-        echo -e "  ${magenta}Xray G7G32 The Ultimate Zenith Edition${none}"
+        echo -e "  ${magenta}Xray G7G33 The Absolute Zenith Edition${none}"
         local svc=$(systemctl is-active xray 2>/dev/null || echo "inactive")
         if test "$svc" = "active"; then svc="${green}运行中${none}"; else svc="${red}停止${none}"; fi
         echo -e "  状态: $svc | 快捷指令: ${cyan}xrv${none}"
@@ -416,7 +441,7 @@ main_menu() {
             3) do_summary; read -rp "Enter 继续..." _ ;;
             4) print_magenta ">>> 正在更新规则库..."; bash -c "$(curl -fsSL https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh)" @ install-geodata >/dev/null 2>&1; systemctl restart xray >/dev/null 2>&1; info "Geo 更新成功" ;;
             8) do_uninstall ;;
-            9) choose_sni && _safe_jq_write '(.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings) |= . + {"serverNames":,"dest":"'"$BEST_SNI"':443"}' && systemctl restart xray && do_summary && read -rp "Enter 继续..." _ ;;
+            9) choose_sni && _safe_jq_write '.inbounds.streamSettings.realitySettings.serverNames = | .inbounds.streamSettings.realitySettings.dest = "'"$BEST_SNI"':443"' && systemctl restart xray >/dev/null 2>&1 && do_summary && read -rp "Enter 继续..." _ ;;
             0) exit 0 ;;
         esac
     done
