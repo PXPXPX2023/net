@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-#g7g23.sh
+# ============================================================
+# 脚本名称: g7g23.sh (语法严格校验与终极防呆版)
+# ============================================================
+
 if]; then
     echo -e "\033 此脚本必须以 root 身份运行!\033[0m" 1>&2
     exit 1
@@ -25,7 +28,7 @@ SYMLINK="/usr/local/bin/xrv"
 mkdir -p "$(dirname "$LOG_FILE")" "$CONFIG_DIR" 2>/dev/null
 touch "$LOG_FILE" 2>/dev/null || LOG_FILE=""
 
-# 生成快捷指令 (规避内存执行 /dev/fd 的问题)
+# 生成快捷指令 (规避内存执行时 $0 丢失的问题)
 if]; then
     cp -f "$0" "$SYMLINK" 2>/dev/null
     chmod +x "$SYMLINK" 2>/dev/null
@@ -37,7 +40,6 @@ print_yellow() { echo -e "\033] && echo " $1" >> "$LOG_FILE"; }
 display_cyan() { echo -e "\033[36m$1\033[0m"; }
 hr()           { echo -e "\033[90m---------------------------------------------------\033] && echo " $1" >> "$LOG_FILE"; }
 log_info() { echo -e "\033\033\033 $1"; }
-log_err()  { echo -e "\033\033 $1"; }
 exit_with_error() { print_red "致命错误: $1"; exit 1; }
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
@@ -455,7 +457,8 @@ main_menu() {
     detect_distribution; detect_package_manager; check_service_manager; install_dependencies
     while true; do
         clear
-        echo -e "\033]; then systemctl is-active --quiet xray 2>/dev/null && svc="active"; else service xray status 2>/dev/null | grep -q "running" && svc="active"; fi
+        echo -e "\033[94m===================================================\033[0m"
+        echo -e " \033[96mXray G7G23 BUGFIX 纯净排错版 (终端输入 xrv 唤醒)\033]; then systemctl is-active --quiet xray 2>/dev/null && svc="active"; else service xray status 2>/dev/null | grep -q "running" && svc="active"; fi
         local cur_ver=$("$XRAY_BIN" version 2>/dev/null | head -n1 | awk '{print $2}')
         local st_str=$(] && echo -e "\033[32m▶ 稳定运行\033[0m" || echo -e "\033[31m■ 脱机停止\033[0m")
         echo -e "  状态: $st_str | 版本: \033[33m${cur_ver:-N/A}\033[0m\n"
