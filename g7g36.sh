@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # ============================================================
-# 脚本名称: g7g34.sh (The Absolute Zenith Edition)
+# 脚本名称: g7g36.sh (The Absolute Zenith Edition)
 # 快捷方式: xrv
-# 终极修复: 
-#   1. 恢复标准 JSON 数组格式，彻底解决配置解析失败的 Bug。
-#   2. VLESS 监听端口支持回车默认 443，交互更加人性化。
-#   3. 菜单排版精简，核弹级卸载逻辑精准清理一切残留痕迹。
-#   4. 130+ 实体矩阵 + 原生探活算法 + ASCII 二维码完美融合。
+# 巅峰突破: 
+#   1. 引入 _L_ 与 _R_ 代币防吞噬引擎，100% 免疫 Markdown 渲染器吃符号 Bug。
+#   2. 核弹卸载新增“终极自毁程序”，物理粉碎快捷指令备份与当前脚本自身。
+#   3. 修复 jq 注入语法，完美恢复无感热切 SNI 与 UUID 交互管理。
+#   4. 1-65535 自定义端口、130+ 实体雷达探测、ASCII 二维码引擎全量就绪。
 # ============================================================
 
 # 必须用 bash 运行
 if test -z "$BASH_VERSION"; then
-    echo "错误: 请用 bash 运行此脚本: bash g7g34.sh"
+    echo "错误: 请用 bash 运行此脚本: bash g7g36.sh"
     exit 1
 fi
 
@@ -44,7 +44,6 @@ print_magenta() { echo -e "${magenta}$*${none}"; }
 print_cyan()    { echo -e "${cyan}$*${none}"; }
 
 info()  { echo -e "${green}${none} $*"; }
-warn()  { echo -e "${yellow}${none} $*"; }
 error() { echo -e "${red}${none} $*";   }
 die()   { echo -e "\n${red}${none} $*\n"; exit 1; }
 
@@ -78,19 +77,20 @@ preflight() {
     if test -f "$SCRIPT_PATH"; then
         cp -f "$SCRIPT_PATH" "$SYMLINK" >/dev/null 2>&1
         chmod +x "$SYMLINK" >/dev/null 2>&1
-        info "快捷指令 ${cyan}xrv${none} 已激活"
+        info "物理防丢快捷指令 ${cyan}xrv${none} 已激活"
     fi
     
     SERVER_IP=$(curl -s -4 --connect-timeout 5 https://api.ipify.org || curl -s -4 --connect-timeout 5 https://ifconfig.me || echo "获取失败")
 }
 
-# -- 核心：130+ 实体 SNI 扫描引擎 (原生流处理) --
+# -- 核心：130+ 实体 SNI 扫描引擎 (纯字符串流处理，防吞噬) --
 run_sni_scanner() {
     title "雷达嗅探：全量 130+ 实体矩阵探测"
     print_yellow "正在逐一异步握手以建立战备缓存，约耗时 60 秒...\n"
     
     mkdir -p "$CONFIG_DIR" 2>/dev/null
     
+    # 纯字符串列表，彻底抛弃 Bash 数组
     local sni_list="www.maersk.com www.msc.com www.cma-cgm.com www.hapag-lloyd.com \
     www.michelin.com www.bridgestone.com www.goodyear.com www.pirelli.com \
     www.sony.com www.sony.net www.panasonic.com www.canon.com \
@@ -196,19 +196,25 @@ choose_sni() {
 
 # -- 端口校验器 --
 validate_port() {
-    if echo "$1" | grep -qE '^+$'; then
-        if test "$1" -ge 1 && test "$1" -le 65535; then
-            return 0
-        fi
-    fi
+    local p="$1"
+    case "$p" in
+        ''|**) return 1 ;;
+        *) 
+            if test "$p" -ge 1 && test "$p" -le 65535; then
+                return 0
+            fi
+            ;;
+    esac
     return 1
 }
 
-# -- 安全写入配置 (jq 原子操作) --
+# -- 安全写入配置 (代币防吞噬引擎) --
 _safe_jq_write() {
-    local filter="$1"
+    local raw_filter="$1"
+    # 将代币还原为真实的中括号，彻底规避渲染引擎故障
+    local real_filter=$(echo "$raw_filter" | sed 's/_L_//g')
     local tmp=$(mktemp)
-    if jq "$filter" "$CONFIG" > "$tmp" 2>/dev/null; then
+    if jq "$real_filter" "$CONFIG" > "$tmp" 2>/dev/null; then
         mv "$tmp" "$CONFIG" >/dev/null 2>&1
         chmod 600 "$CONFIG" >/dev/null 2>&1
         return 0
@@ -223,8 +229,9 @@ do_user_manager() {
         title "UUID 权限与管理"
         if ! test -f "$CONFIG"; then error "未发现配置"; return; fi
 
-        local clients=$(jq -r '.inbounds[] | select(.protocol=="vless") | .settings.clients[] | .id' "$CONFIG" 2>/dev/null)
-        if test -z "$clients" || test "$clients" = "null"; then error "未发现 VLESS 节点"; return; fi
+        # 空中括号不会被吞噬，安全提取
+        local clients=$(jq -r 'first(.inbounds[] | select(.protocol=="vless")).settings.clients[].id' "$CONFIG" 2>/dev/null)
+        if test -z "$clients"; then error "未发现 VLESS 节点"; return; fi
 
         local tmp_users="/tmp/xray_users.txt"
         echo "$clients" | awk '{print NR, $0}' > "$tmp_users"
@@ -242,7 +249,8 @@ do_user_manager() {
         
         if test "$uopt" = "a"; then
             local nu=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || $XRAY_BIN uuid)
-            _safe_jq_write '(.inbounds[] | select(.protocol=="vless") | .settings.clients) +='
+            # 使用代币引擎防吞噬
+            _safe_jq_write '(first(.inbounds[] | select(.protocol=="vless")).settings.clients) += _L_ {"id":"'"$nu"'","flow":"xtls-rprx-vision"} _R_'
             systemctl restart xray; info "已新增: $nu"
             
         elif test "$uopt" = "d"; then
@@ -253,7 +261,7 @@ do_user_manager() {
             else
                 local target_uuid=$(awk -v id="$dnum" '$1==id {print $2}' "$tmp_users")
                 if test -n "$target_uuid"; then
-                    _safe_jq_write '(.inbounds[] | select(.protocol=="vless") | .settings.clients) |= map(select(.id != "'"$target_uuid"'"))'
+                    _safe_jq_write '(first(.inbounds[] | select(.protocol=="vless")).settings.clients) |= map(select(.id != "'"$target_uuid"'"))'
                     systemctl restart xray; info "已成功删除。"
                 else
                     error "序号无效。"
@@ -271,13 +279,13 @@ do_user_manager() {
 do_summary() {
     if ! test -f "$CONFIG"; then return; fi
     
-    local uuid=$(jq -r '.inbounds[] | select(.protocol=="vless") | .settings.clients.id' "$CONFIG" 2>/dev/null)
-    local port=$(jq -r '.inbounds[] | select(.protocol=="vless") | .port' "$CONFIG" 2>/dev/null)
-    local sni=$(jq -r '.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings.serverNames' "$CONFIG" 2>/dev/null)
-    local sid=$(jq -r '.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings.shortIds' "$CONFIG" 2>/dev/null)
-    local pub=$(jq -r '.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings.publicKey' "$CONFIG" 2>/dev/null)
+    local uuid=$(jq -r 'first(.inbounds[] | select(.protocol=="vless")).settings.clients[].id' "$CONFIG" | head -1)
+    local port=$(jq -r 'first(.inbounds[] | select(.protocol=="vless")).port' "$CONFIG" | head -1)
+    local sni=$(jq -r 'first(.inbounds[] | select(.protocol=="vless")).streamSettings.realitySettings.serverNames[]' "$CONFIG" | head -1)
+    local sid=$(jq -r 'first(.inbounds[] | select(.protocol=="vless")).streamSettings.realitySettings.shortIds[]' "$CONFIG" | head -1)
+    local pub=$(jq -r 'first(.inbounds[] | select(.protocol=="vless")).streamSettings.realitySettings.publicKey' "$CONFIG" | head -1)
     
-    if test -z "$uuid" || test "$uuid" = "null"; then return; fi
+    if test -z "$uuid"; then return; fi
 
     title "The Zenith 节点详情"
     printf "  ${yellow}%-16s${none} %s\n" "协议框架:" "VLESS-Reality-Vision"
@@ -299,10 +307,10 @@ do_summary() {
     fi
 }
 
-# -- 卸载模块 (精准清理残留) --
+# -- 核弹级卸载模块 (终极自毁程序) --
 do_uninstall() {
-    title "清理：彻底卸载 Xray 及所有痕迹"
-    read -rp "确定要彻底删除 Xray 及其配置文件、日志和守护进程吗？(输入y确定): " confirm
+    title "核弹级清理：彻底卸载 Xray 及所有痕迹"
+    read -rp "确定要彻底删除 Xray 及其配置文件、快捷指令和当前脚本吗？(输入y确定): " confirm
     if test "$confirm" != "y"; then return; fi
     
     print_magenta ">>> 正在停止并禁用 Xray 服务..."
@@ -316,27 +324,31 @@ do_uninstall() {
     rm -rf /lib/systemd/system/xray* >/dev/null 2>&1
     systemctl daemon-reload >/dev/null 2>&1
     
-    print_magenta ">>> 正在清理数据目录与日志记录..."
-    rm -rf "$CONFIG_DIR" "$DAT_DIR" "$XRAY_BIN" "$SYMLINK" >/dev/null 2>&1
+    print_magenta ">>> 正在粉碎数据目录、系统日志及物理备份..."
+    rm -rf "$CONFIG_DIR" "$DAT_DIR" "$XRAY_BIN" >/dev/null 2>&1
     rm -rf /var/log/xray* >/dev/null 2>&1
     
-    print_green "卸载完成！系统已恢复绝对纯净。"
+    # 终极自毁：删除快捷方式与脚本自身
+    rm -f "/usr/local/bin/xrv" >/dev/null 2>&1
+    rm -f "$SCRIPT_PATH" >/dev/null 2>&1
+    
+    print_green "卸载完成！系统、快捷指令及脚本自身已被完全物理粉碎。"
     exit 0
 }
 
-# -- 安装主逻辑 (标准 JSON) --
+# -- 安装主逻辑 (代币引擎生成 JSON) --
 do_install() {
     title "Absolute Zenith: 核心部署"
     preflight
     
     while true; do
-        read -rp "请输入 VLESS 监听端口 (1-65535): " input_p
+        read -rp "请输入 VLESS 监听端口 (回车键默认443): " input_p
         input_p=${input_p:-443}
         if validate_port "$input_p"; then
             LISTEN_PORT="$input_p"
             break
         fi
-        print_red "端口无效，请输入 1-65535 之间的数字。"
+        print_red "端口无效，请输入 1-65535 之间的纯数字。"
     done
 
     read -rp "请输入节点别名 (默认 xp-reality): " input_remark
@@ -353,33 +365,25 @@ do_install() {
     local uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || $XRAY_BIN uuid)
     local sid=$(head -c 8 /dev/urandom | xxd -p | tr -d '\n')
 
-    # 标准合规 JSON 数组写法，保证 Xray 核心顺利解析
-    cat > "$CONFIG" <<EOF
+    # 【防吞噬引擎启动】：写入临时文件，使用 _L_ 替代
+    cat > "$CONFIG.tmp" <<EOF
 {
-  "log": {
-    "loglevel": "warning"
-  },
+  "log": { "loglevel": "warning" },
   "routing": {
     "domainStrategy": "IPIfNonMatch",
-    "rules":,
-        "outboundTag": "block",
-        "_enabled": true
-      },
-      {
-        "type": "field",
-        "ip":,
-        "outboundTag": "block",
-        "_enabled": true
-      }
-    ]
+    "rules": _L_
+      { "outboundTag": "block", "_enabled": true, "protocol": _L_ "bittorrent" _R_ },
+      { "outboundTag": "block", "_enabled": true, "ip": _L_ "geoip:cn" _R_ },
+      { "outboundTag": "block", "_enabled": true, "domain": _L_ "geosite:category-ads-all" _R_ }
+    _R_
   },
-  "inbounds": [
+  "inbounds": _L_
     {
       "tag": "vless-reality",
       "port": $LISTEN_PORT,
       "protocol": "vless",
       "settings": {
-        "clients":,
+        "clients": _L_ { "id": "$uuid", "flow": "xtls-rprx-vision" } _R_,
         "decryption": "none"
       },
       "streamSettings": {
@@ -387,22 +391,29 @@ do_install() {
         "security": "reality",
         "realitySettings": {
           "dest": "$BEST_SNI:443",
-          "serverNames":,
+          "serverNames": _L_ "$BEST_SNI" _R_,
           "privateKey": "$priv",
           "publicKey": "$pub",
-          "shortIds":
+          "shortIds": _L_ "$sid" _R_
         }
       },
       "sniffing": {
         "enabled": true,
-        "destOverride":
+        "destOverride": _L_ "http", "tls", "quic" _R_
       }
     }
-  ],
-  "outbounds":
+  _R_,
+  "outbounds": _L_
+    { "protocol": "freedom", "tag": "direct" },
+    { "protocol": "blackhole", "tag": "block" }
+  _R_
 }
 EOF
     
+    # 执行物理替换还原，规避一切渲染错误
+    sed 's/_L_//g' "$CONFIG.tmp" > "$CONFIG"
+    rm -f "$CONFIG.tmp"
+
     echo "$pub" > "$PUBKEY_FILE"
     chmod -R 755 "$CONFIG_DIR" >/dev/null 2>&1
     chown -R nobody:nogroup "$CONFIG_DIR" >/dev/null 2>&1 || chown -R nobody:nobody "$CONFIG_DIR" >/dev/null 2>&1
@@ -420,7 +431,7 @@ main_menu() {
     while true; do
         clear
         echo -e "${blue}===================================================${none}"
-        echo -e "  ${magenta}Xray G7G34 The Absolute Zenith Edition${none}"
+        echo -e "  ${magenta}Xray G7G36 The Absolute Zenith Edition${none}"
         local svc=$(systemctl is-active xray 2>/dev/null || echo "inactive")
         if test "$svc" = "active"; then svc="${green}运行中${none}"; else svc="${red}停止${none}"; fi
         echo -e "  状态: $svc | 快捷指令: ${cyan}xrv${none}"
@@ -429,7 +440,7 @@ main_menu() {
         echo "  2) 用户管理 (UUID 序号增删)"
         echo "  3) 分发中心 (详情与扫码)"
         echo "  4) 更新 Geo 规则库"
-        echo "  8) 彻底卸载 (清空一切痕迹)"
+        echo "  8) 彻底卸载 (清空一切痕迹并自毁)"
         echo -e "  ${cyan}9) 无感热切 SNI 矩阵 (130+ 节点)${none}"
         echo "  0) 退出"
         hr
@@ -440,7 +451,7 @@ main_menu() {
             3) do_summary; read -rp "Enter 继续..." _ ;;
             4) print_magenta ">>> 正在更新规则库..."; bash -c "$(curl -fsSL https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh)" @ install-geodata >/dev/null 2>&1; systemctl restart xray >/dev/null 2>&1; info "Geo 更新成功" ;;
             8) do_uninstall ;;
-            9) choose_sni && _safe_jq_write '.inbounds.streamSettings.realitySettings.serverNames = | .inbounds.streamSettings.realitySettings.dest = "'"$BEST_SNI"':443"' && systemctl restart xray >/dev/null 2>&1 && do_summary && read -rp "Enter 继续..." _ ;;
+            9) choose_sni && _safe_jq_write '(first(.inbounds[] | select(.protocol=="vless")).streamSettings.realitySettings) |= . + {"serverNames": _L_ "'"$BEST_SNI"'" _R_, "dest": "'"$BEST_SNI"':443"}' && systemctl restart xray >/dev/null 2>&1 && do_summary && read -rp "Enter 继续..." _ ;;
             0) exit 0 ;;
         esac
     done
