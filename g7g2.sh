@@ -355,3 +355,12 @@ main() {
 }
 
 main "$@"
+
+# 1. 确保 Xray 配置目录及其文件对所有用户可读
+chmod -R 755 /usr/local/etc/xray
+
+# 2. 如果你的系统使用的是官方安装脚本，尝试将所有权交给 nobody 用户
+chown -R nobody:nogroup /usr/local/etc/xray 2>/dev/null || chown -R nobody:nobody /usr/local/etc/xray
+
+# 3. 重启服务
+systemctl restart xray
