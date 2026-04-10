@@ -430,7 +430,7 @@ main_menu() {
         echo "  2) 用户管理 (UUID 序号增删)"
         echo "  3) 分发中心 (详情与扫码)"
         echo "  4) 更新 Geo 规则库"
-        echo "  8) 彻底核弹卸载 (清空一切幽灵痕迹)"
+        echo "  8) 彻底卸载 (清空一切痕迹)"
         echo -e "  ${cyan}9) 无感热切 SNI 矩阵 (130+ 节点)${none}"
         echo "  0) 退出"
         hr
