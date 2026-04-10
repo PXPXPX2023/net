@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
 # 脚本名称: g7g3.sh (Ultimate Fusion & Vision Seed Edition)
-# 论坛支持: https://xp.day
 # 核心亮点: 
 #   1. g7g2 强悍底层 + v6 丰富交互界面的完美融合
 #   2. 强制开启 xtls-rprx-vision 流控
