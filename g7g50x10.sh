@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # ============================================================
-# 脚本名称: g7g50x9.sh (The Apex Vanguard V7 Edition)
+# 脚本名称: g7g50x10.sh (The Apex Vanguard V8 Edition)
 # 快捷方式: xrv
 # 巅峰突破: 
-#   1. 彻底根治 status 23 权限拦截 Bug，采用 755/644 绝对权限防线穿透。
-#   2. 修复交互逻辑死角：选择列表按 q 取消时，外层静默返回，杜绝冗余提示。
-#   3. 商用流量计费中心完美汉化，支持按月精准回溯 30 天流量明细。
+#   1. 彻底解决复制粘贴截断导致的 unexpected EOF 语法错误。
+#   2. 商用流量计费中心完美汉化，支持按月精准回溯 30 天流量明细。
+#   3. 用户管理引入生命周期系统，新增/导入用户时自动打上时间戳并直观展示。
 #   4. 纯净寡头节点库定稿，矩阵全量重组、十六进制防吞噬引擎全量融贯。
+#   5. 彻底根治 status 23 权限拦截 Bug，采用 755/644 绝对防线穿透。
 # ============================================================
 
 # 必须用 bash 运行
 if test -z "$BASH_VERSION"; then
-    echo "错误: 请用 bash 运行此脚本: bash g7g50x9.sh"
+    echo "错误: 请用 bash 运行此脚本: bash g7g50x10.sh"
     exit 1
 fi
 
@@ -111,54 +112,15 @@ UPDSH
     info "已配置自动热更: 每天凌晨 3:00 更新 Geo 规则库"
 }
 
-# -- 核心：130+ 实体 SNI 扫描引擎 (随机打乱 + 秒停机制 + 纯净列表) --
+# -- 核心：130+ 实体 SNI 扫描引擎 (防截断单行列表 + 秒停机制) --
 run_sni_scanner() {
     title "雷达嗅探：130+ 实体矩阵与国内连通性探测"
     print_yellow ">>> 扫描中... (随时按回车键可立即中止并挑选已扫描节点)\n"
     
     mkdir -p "$CONFIG_DIR" 2>/dev/null
     
-    local sni_list="www.apple.com support.apple.com developer.apple.com id.apple.com icloud.apple.com \
-    swdist.apple.com swcdn.apple.com updates.cdn-apple.com mensura.cdn-apple.com osxapps.itunes.apple.com \
-    aod.itunes.apple.com is1-ssl.mzstatic.com itunes.apple.com gateway.icloud.com www.icloud.com \
-    www.microsoft.com login.microsoftonline.com portal.azure.com support.microsoft.com office.com \
-    update.microsoft.com windowsupdate.microsoft.com software.download.prss.microsoft.com cdn-dynmedia-1.microsoft.com \
-    www.intel.com downloadcenter.intel.com ark.intel.com www.amd.com drivers.amd.com community.amd.com \
-    webinar.amd.com ir.amd.com www.dell.com support.dell.com www.hp.com support.hp.com developers.hp.com \
-    www.bmw.com configure.bmw.com shop.bmw.com www.mercedes-benz.com me.mercedes-benz.com \
-    www.toyota-global.com global.toyota www.toyota.com www.honda.com global.honda www.volkswagen.com \
-    service.volkswagen.com www.vw.com www.nike.com account.nike.com store.nike.com www.adidas.com \
-    account.adidas.com www.zara.com static.zara.net www.ikea.com secure.ikea.com www.shell.com \
-    careers.shell.com www.bp.com login.bp.com www.totalenergies.com www.ge.com digital.ge.com \
-    www.abb.com new.abb.com www.hsbc.com online.hsbc.com www.goldmansachs.com login.gs.com \
-    www.morganstanley.com secure.morganstanley.com www.maersk.com www.msc.com www.cma-cgm.com \
-    www.hapag-lloyd.com www.michelin.com www.bridgestone.com www.goodyear.com www.pirelli.com \
-    www.sony.com www.sony.net www.panasonic.com www.canon.com www.nintendo.com www.lg.com \
-    www.epson.com www.unilever.com www.loreal.com www.shiseido.com www.jnj.com www.kao.com \
-    www.uniqlo.com www.hermes.com www.chanel.com services.chanel.com www.louisvuitton.com \
-    eu.louisvuitton.com www.dior.com www.ferragamo.com www.versace.com www.prada.com www.fendi.com \
-    www.gucci.com www.tiffany.com www.esteelauder.com www.maje.com www.swatch.com www.coca-cola.com \
-    www.coca-colacompany.com www.pepsi.com www.pepsico.com www.nestle.com www.bk.com www.heinz.com \
-    www.pg.com www.basf.com www.bayer.com www.bosch.com www.bosch-home.com www.lexus.com www.audi.com \
-    www.porsche.com www.skoda-auto.com www.gm.com www.chevrolet.com www.cadillac.com www.ford.com \
-    www.lincoln.com www.hyundai.com www.kia.com www.peugeot.com www.renault.com www.jaguar.com \
-    www.landrover.com www.astonmartin.com www.mclaren.com www.ferrari.com www.maserati.com www.volvocars.com \
-    www.tesla.com s0.awsstatic.com d1.awsstatic.com images-na.ssl-images-amazon.com m.media-amazon.com \
-    www.nvidia.com academy.nvidia.com images.nvidia.com blogs.nvidia.com docs.nvidia.com docscontent.nvidia.com \
-    www.samsung.com www.sap.com www.oracle.com www.mysql.com www.swift.com download-installer.cdn.mozilla.net \
-    addons.mozilla.org www.airbnb.co.uk www.airbnb.ca www.airbnb.com.sg www.airbnb.com.au www.airbnb.co.in \
-    www.ubi.com lol.secure.dyn.riotcdn.net one-piece.com player.live-video.net mit.edu www.mit.edu web.mit.edu \
-    ocw.mit.edu csail.mit.edu libraries.mit.edu alum.mit.edu id.mit.edu stanford.edu www.stanford.edu \
-    cs.stanford.edu ai.stanford.edu web.stanford.edu login.stanford.edu ox.ac.uk www.ox.ac.uk cs.ox.ac.uk \
-    maths.ox.ac.uk login.ox.ac.uk lufthansa.com www.lufthansa.com book.lufthansa.com checkin.lufthansa.com \
-    api.lufthansa.com singaporeair.com www.singaporeair.com booking.singaporeair.com krisflyer.singaporeair.com \
-    trekbikes.com www.trekbikes.com shop.trekbikes.com support.trekbikes.com specialized.com www.specialized.com \
-    store.specialized.com support.specialized.com giant-bicycles.com www.giant-bicycles.com dealer.giant-bicycles.com \
-    logitech.com www.logitech.com support.logitech.com gaming.logitech.com razer.com www.razer.com \
-    support.razer.com insider.razer.com corsair.com www.corsair.com support.corsair.com account.asus.com \
-    kingston.com www.kingston.com shop.kingston.com support.kingston.com seagate.com www.seagate.com \
-    support.seagate.com kleenex.com www.kleenex.com shop.kleenex.com scottbrand.com www.scottbrand.com \
-    tempo-world.com www.tempo-world.com"
+    # 采用单行超长字符串，彻底杜绝复制粘贴时换行符丢失导致的 Bash 报错
+    local sni_list="www.apple.com support.apple.com developer.apple.com id.apple.com icloud.apple.com swdist.apple.com swcdn.apple.com updates.cdn-apple.com mensura.cdn-apple.com osxapps.itunes.apple.com aod.itunes.apple.com is1-ssl.mzstatic.com itunes.apple.com gateway.icloud.com www.icloud.com www.microsoft.com login.microsoftonline.com portal.azure.com support.microsoft.com office.com update.microsoft.com windowsupdate.microsoft.com software.download.prss.microsoft.com cdn-dynmedia-1.microsoft.com www.intel.com downloadcenter.intel.com ark.intel.com www.amd.com drivers.amd.com community.amd.com webinar.amd.com ir.amd.com www.dell.com support.dell.com www.hp.com support.hp.com developers.hp.com www.bmw.com configure.bmw.com shop.bmw.com www.mercedes-benz.com me.mercedes-benz.com www.toyota-global.com global.toyota www.toyota.com www.honda.com global.honda www.volkswagen.com service.volkswagen.com www.vw.com www.nike.com account.nike.com store.nike.com www.adidas.com account.adidas.com www.zara.com static.zara.net www.ikea.com secure.ikea.com www.shell.com careers.shell.com www.bp.com login.bp.com www.totalenergies.com www.ge.com digital.ge.com www.abb.com new.abb.com www.hsbc.com online.hsbc.com www.goldmansachs.com login.gs.com www.morganstanley.com secure.morganstanley.com www.maersk.com www.msc.com www.cma-cgm.com www.hapag-lloyd.com www.michelin.com www.bridgestone.com www.goodyear.com www.pirelli.com www.sony.com www.sony.net www.panasonic.com www.canon.com www.nintendo.com www.lg.com www.epson.com www.unilever.com www.loreal.com www.shiseido.com www.jnj.com www.kao.com www.uniqlo.com www.hermes.com www.chanel.com services.chanel.com www.louisvuitton.com eu.louisvuitton.com www.dior.com www.ferragamo.com www.versace.com www.prada.com www.fendi.com www.gucci.com www.tiffany.com www.esteelauder.com www.maje.com www.swatch.com www.coca-cola.com www.coca-colacompany.com www.pepsi.com www.pepsico.com www.nestle.com www.bk.com www.heinz.com www.pg.com www.basf.com www.bayer.com www.bosch.com www.bosch-home.com www.lexus.com www.audi.com www.porsche.com www.skoda-auto.com www.gm.com www.chevrolet.com www.cadillac.com www.ford.com www.lincoln.com www.hyundai.com www.kia.com www.peugeot.com www.renault.com www.jaguar.com www.landrover.com www.astonmartin.com www.mclaren.com www.ferrari.com www.maserati.com www.volvocars.com www.tesla.com s0.awsstatic.com d1.awsstatic.com images-na.ssl-images-amazon.com m.media-amazon.com www.nvidia.com academy.nvidia.com images.nvidia.com blogs.nvidia.com docs.nvidia.com docscontent.nvidia.com www.samsung.com www.sap.com www.oracle.com www.mysql.com www.swift.com download-installer.cdn.mozilla.net addons.mozilla.org www.airbnb.co.uk www.airbnb.ca www.airbnb.com.sg www.airbnb.com.au www.airbnb.co.in www.ubi.com lol.secure.dyn.riotcdn.net one-piece.com player.live-video.net mit.edu www.mit.edu web.mit.edu ocw.mit.edu csail.mit.edu libraries.mit.edu alum.mit.edu id.mit.edu stanford.edu www.stanford.edu cs.stanford.edu ai.stanford.edu web.stanford.edu login.stanford.edu ox.ac.uk www.ox.ac.uk cs.ox.ac.uk maths.ox.ac.uk login.ox.ac.uk lufthansa.com www.lufthansa.com book.lufthansa.com checkin.lufthansa.com api.lufthansa.com singaporeair.com www.singaporeair.com booking.singaporeair.com krisflyer.singaporeair.com trekbikes.com www.trekbikes.com shop.trekbikes.com support.trekbikes.com specialized.com www.specialized.com store.specialized.com support.specialized.com giant-bicycles.com www.giant-bicycles.com dealer.giant-bicycles.com logitech.com www.logitech.com support.logitech.com gaming.logitech.com razer.com www.razer.com support.razer.com insider.razer.com corsair.com www.corsair.com support.corsair.com account.asus.com kingston.com www.kingston.com shop.kingston.com support.kingston.com seagate.com www.seagate.com support.seagate.com kleenex.com www.kleenex.com shop.kleenex.com scottbrand.com www.scottbrand.com tempo-world.com www.tempo-world.com"
 
     if command -v shuf >/dev/null 2>&1; then
         sni_list=$(echo "$sni_list" | tr ' ' '\n' | shuf | tr '\n' ' ')
@@ -267,7 +229,6 @@ choose_sni() {
             read -rp "  请选择: " sel
             sel=${sel:-1}
             
-            # 【核心交互修复】：按 q 抛出 1 状态码，打断外层循环的后续弹窗
             if test "$sel" = "q"; then return 1; fi
             if test "$sel" = "r"; then run_sni_scanner; continue; fi
             
@@ -335,7 +296,6 @@ validate_port() {
 
 # -- 绝对权限防线 (绝杀 status 23 Bug) --
 fix_permissions() {
-    # 强制修正：配置本体 644 (大家都能读)，目录 755 (大家都能通过)
     chmod 644 "$CONFIG" >/dev/null 2>&1
     chmod 755 "$CONFIG_DIR" >/dev/null 2>&1
     chown root:root "$CONFIG" >/dev/null 2>&1 || true
@@ -376,7 +336,8 @@ do_user_manager() {
         title "用户管理 (增删/导入 备注、UUID、ShortId)"
         if ! test -f "$CONFIG"; then error "未发现配置"; return; fi
 
-        local clients=$(jq -r ".inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .settings.clients${L_B}${R_B} | \"\\(.id)|\\(.email // \"无备注\")\"" "$CONFIG" 2>/dev/null)
+        # 安全防脱逸的 jq 字符串拼接提取
+        local clients=$(jq -r ".inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .settings.clients${L_B}${R_B} | .id + \"|\" + (.email // \"无备注\")" "$CONFIG" 2>/dev/null)
         if test -z "$clients" || test "$clients" = "null"; then error "未发现 VLESS 节点"; return; fi
 
         local tmp_users="/tmp/xray_users.txt"
@@ -710,7 +671,7 @@ do_uninstall() {
 
 # -- 安装主逻辑 --
 do_install() {
-    title "Apex Vanguard V7: 核心部署"
+    title "Apex Vanguard V8: 核心部署"
     preflight
     
     date +"%Y-%m-%d %H:%M:%S" > "$INSTALL_DATE_FILE"
@@ -731,7 +692,8 @@ do_install() {
         done
         read -rp "请输入节点别名 (默认 xp-reality): " input_remark
         REMARK_NAME=${input_remark:-xp-reality}
-        choose_sni || return 1
+        choose_sni
+        if test $? -ne 0; then return 1; fi
     fi
 
     local ss_port=8388; local ss_pass=""; local ss_method="aes-256-gcm"
@@ -857,7 +819,7 @@ main_menu() {
     while true; do
         clear
         echo -e "${blue}===================================================${none}"
-        echo -e "  ${magenta}Xray G7G50x9 The Apex Vanguard V7 Edition${none}"
+        echo -e "  ${magenta}Xray G7G50x10 The Apex Vanguard V8 Edition${none}"
         local svc=$(systemctl is-active xray 2>/dev/null || echo "inactive")
         if test "$svc" = "active"; then svc="${green}运行中${none}"; else svc="${red}停止${none}"; fi
         echo -e "  状态: $svc | 快捷指令: ${cyan}xrv${none}"
