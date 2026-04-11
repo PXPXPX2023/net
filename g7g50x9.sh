@@ -865,4 +865,60 @@ main_menu() {
         echo "  1) 核心安装 / 重构网络 (VLESS/SS 双协议)"
         echo "  2) 用户管理 (增删/导入/专属 SNI 挂载)"
         echo "  3) 分发中心 (多用户详情与紧凑二维码)"
-        echo "  4) 手动更新 Geo 规则库 (已夜
+        echo "  4) 手动更新 Geo 规则库 (已夜间自动热更)"
+        echo "  5) 屏蔽规则管理 (BT/广告双轨拦截)"
+        echo -e "  ${cyan}6) 无感热切 SNI 矩阵 (单选/多选/全选防封阵列)${none}"
+        echo "  8) 彻底卸载 (清空一切痕迹)"
+        echo "  9) 运行状态 (IP/DNS/计费流量统计)"
+        echo "  0) 退出"
+        hr
+        read -rp "选择: " num
+        case "$num" in
+            1) do_install ;;
+            2) do_user_manager ;;
+            3) 
+               do_summary 
+               while true; do
+                   read -rp "按 Enter 返回，或输入 b 重新分配矩阵 SNI: " rb
+                   if [[ "$rb" == "b" || "$rb" == "B" ]]; then
+                       choose_sni
+                       if test $? -eq 0; then
+                           _safe_jq_write "(.inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .streamSettings.realitySettings.serverNames) = ${L_B} $SNI_JSON_ARRAY ${R_B} | (.inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .streamSettings.realitySettings.dest) = \"$BEST_SNI:443\"" && systemctl restart xray >/dev/null 2>&1 && do_summary
+                       else
+                           break
+                       fi
+                   else
+                       break
+                   fi
+               done
+               ;;
+            4) print_magenta ">>> 正在同步最新规则库..."; bash -c "$(curl -fsSL https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh)" @ install-geodata >/dev/null 2>&1; systemctl restart xray >/dev/null 2>&1; info "Geo 更新成功" ;;
+            5) _global_block_rules ;;
+            6) 
+               choose_sni
+               if test $? -eq 0; then
+                   _safe_jq_write "(.inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .streamSettings.realitySettings.serverNames) = ${L_B} $SNI_JSON_ARRAY ${R_B} | (.inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .streamSettings.realitySettings.dest) = \"$BEST_SNI:443\"" && systemctl restart xray >/dev/null 2>&1 && do_summary
+                   while true; do
+                       read -rp "按 Enter 返回主菜单，或输入 b 继续重新分配矩阵: " rb
+                       if [[ "$rb" == "b" || "$rb" == "B" ]]; then
+                           choose_sni
+                           if test $? -eq 0; then
+                               _safe_jq_write "(.inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .streamSettings.realitySettings.serverNames) = ${L_B} $SNI_JSON_ARRAY ${R_B} | (.inbounds${L_B}${R_B} | select(.protocol==\"vless\") | .streamSettings.realitySettings.dest) = \"$BEST_SNI:443\"" && systemctl restart xray >/dev/null 2>&1 && do_summary
+                           else
+                               break
+                           fi
+                       else
+                           break
+                       fi
+                   done
+               fi
+               ;;
+            8) do_uninstall ;;
+            9) do_status_menu ;;
+            0) exit 0 ;;
+        esac
+    done
+}
+
+preflight
+main_menu
