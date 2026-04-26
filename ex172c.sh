@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# 脚本名称: ex172.sh (The Eternity Evolved - Project Genesis V172)
+# 脚本名称: ex172c.sh (The Eternity Evolved - Project Genesis V172)
 # 快捷方式: xrv
 #
 # V172 全量升级要点:
@@ -16,7 +16,7 @@
 # ============================================================
 
 if test -z "$BASH_VERSION"; then
-    echo "错误: 请用 bash 运行: bash ex172.sh"; exit 1
+    echo "错误: 请用 bash 运行: bash ex172c.sh"; exit 1
 fi
 
 # 严格模式
@@ -2188,7 +2188,7 @@ main_menu() {
     while true; do
         clear
         echo -e "${blue}===================================================${none}"
-        echo -e "  ${magenta}Xray ex172 The Eternity Evolved  V${SCRIPT_VERSION}${none}"
+        echo -e "  ${magenta}Xray ex172c The Eternity Evolved  V${SCRIPT_VERSION}${none}"
 
         local xray_st caddy_st hy2_st
         xray_st=$(systemctl is-active xray          2>/dev/null || echo "inactive")
