@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ============================================================
-# 脚本名称: ex172c.sh (The Eternity Evolved - Project Genesis V172)
+# 脚本名称: ex172c.sh (The Eternity Evolved - Project Genesis V172c)
 # 快捷方式: xrv
 #
-# V172 全量升级要点:
+# V172c 全量升级要点:
 #   1. 安全加固: 全局 ERR trap、配置自动备份回滚、输入消毒
 #   2. 协议扩展: 原生整合 NaiveProxy(Caddy)、Hysteria2 双协议
 #   3. 稳定性:   set -euo pipefail 严格模式，readonly 全局锚定
@@ -1521,7 +1521,7 @@ do_app_level_tuning_menu() {
 # ══════════════════════════════════════════════════════════════
 
 do_install() {
-    title "V172 多协议核心部署"
+    title "V172c 多协议核心部署"
     preflight
     systemctl stop xray 2>/dev/null || true
     [[ ! -f "$INSTALL_DATE_FILE" ]] && date +"%Y-%m-%d %H:%M:%S" > "$INSTALL_DATE_FILE"
@@ -1700,7 +1700,7 @@ EOF
 
 do_summary() {
     [[ ! -f "$CONFIG" ]] && return
-    title "V172 节点分发中心"
+    title "V172c 节点分发中心"
 
     # ── VLESS-Reality 节点 ──
     local client_count; client_count=$(jq '.inbounds[]? | select(.protocol=="vless") | .settings.clients | length' "$CONFIG" 2>/dev/null || echo 0)
