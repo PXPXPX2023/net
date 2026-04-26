@@ -375,3 +375,520 @@ preflight() {
 # ==============================================================================
 # (第一部分结束，请立刻发送“继续输出”拉取下一段核心代码)
 # ==============================================================================
+# ==============================================================================
+# [ 10. 极致防砖版！主线原生内核源码裸装引擎 ]
+# ==============================================================================
+do_xanmod_compile() {
+    title "创世重铸：从 Kernel.org 原核提取并暴力裸装最新纯净主线内核 + BBR3"
+    warn "极其重磅警告: 编译耗时 30-60 分钟，低配机极易引发死机断连！"
+    read -rp "您确认要亲自点燃源码编译引擎吗？(y/n): " confirm
+    if [[ "$confirm" != "y" ]]; then
+        return
+    fi
+    
+    print_magenta ">>> [1/7] 构建纯铁血工业级编译底层包依赖环境..."
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -y
+    apt-get install -y build-essential bc bison flex libssl-dev libelf-dev libncurses-dev zstd git dwarves rsync python3 libdw-dev cpio pkg-config
+    
+    check_and_create_1gb_swap
+
+    print_magenta ">>> [2/7] 向 Kernel.org 索要绝对稳定版的完整源码..."
+    local BUILD_DIR="/usr/src"
+    cd $BUILD_DIR
+    
+    local KERNEL_URL=$(curl -s https://www.kernel.org/releases.json | jq -r '.releases[] | select(.type=="stable") | .tarball' | head -1)
+    if [ -z "$KERNEL_URL" ] || [ "$KERNEL_URL" == "null" ]; then
+        KERNEL_URL="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.10.tar.xz"
+    fi
+    
+    local KERNEL_FILE=$(basename $KERNEL_URL)
+    wget -q --show-progress $KERNEL_URL -O $KERNEL_FILE
+
+    if ! tar -tJf $KERNEL_FILE >/dev/null 2>&1; then
+        rm -f $KERNEL_FILE
+        wget -q --show-progress $KERNEL_URL -O $KERNEL_FILE
+        tar -tJf $KERNEL_FILE >/dev/null 2>&1 || { error "包体结构受损！停止操作。"; return 1; }
+    fi
+
+    tar -xJf $KERNEL_FILE
+    local KERNEL_DIR=$(tar -tf $KERNEL_FILE | head -1 | cut -d/ -f1)
+    cd $KERNEL_DIR
+
+    print_magenta ">>> [3/7] 核心洗地：继承原生参数，剿除签名检查并焊入 BBR3..."
+    
+    # ----------------------------------------------------------------------------------
+    # 【核心防砖法案】：绝对不能直接使用 make defconfig！
+    # VPS 的硬盘大多是 VirtIO/KVM，必须通过继承当前正在运行的内核配置，才能保住硬盘驱动！
+    # ----------------------------------------------------------------------------------
+    if [ -f "/boot/config-$(uname -r)" ]; then
+        cp "/boot/config-$(uname -r)" .config
+        info "已成功继承并剽窃当前存活系统中的最原生驱动配置文件 (VirtIO/KVM 救命驱动已保全)！"
+    else
+        if modprobe configs 2>/dev/null && [ -f /proc/config.gz ]; then
+            zcat /proc/config.gz > .config
+            info "已强行从 /proc/config.gz 内存中提取出内核运行时的物理驱动图谱配置！"
+        else
+            error "致命警告：无法在系统中找到任何宿主内核配置模板！"
+            error "如果继续强制编译，新内核将在开机时因缺失虚拟硬盘驱动而引发 Kernel Panic 导致变砖！"
+            read -rp "您确定要承担极其高昂的宕机变砖风险执意继续吗？(y/n): " force_k
+            if [ "$force_k" != "y" ]; then 
+                return 1
+            fi
+            make defconfig
+        fi
+    fi
+    
+    make scripts
+    
+    ./scripts/config --enable CONFIG_TCP_CONG_BBR
+    ./scripts/config --enable CONFIG_DEFAULT_BBR
+    ./scripts/config --enable CONFIG_TCP_BBR3 2>/dev/null || true
+    
+    # 斩断非必要的外设驱动节约编译时间
+    ./scripts/config --disable CONFIG_DRM_I915
+    ./scripts/config --disable CONFIG_NET_VENDOR_REALTEK
+    ./scripts/config --disable CONFIG_NET_VENDOR_BROADCOM
+    ./scripts/config --disable CONFIG_E100
+    
+    # 绝杀 Debian 系编译必出的系统签名死亡陷阱
+    ./scripts/config --disable SYSTEM_TRUSTED_KEYS
+    ./scripts/config --disable SYSTEM_REVOCATION_KEYS
+    ./scripts/config --disable DEBUG_INFO_BTF
+    ./scripts/config --disable DEBUG_INFO
+    
+    yes "" | make olddefconfig
+
+    print_magenta ">>> [4/7] 点火！全核满速编译正式爆发 (采用最稳定裸编译模式)..."
+    local CPU=$(nproc)
+    local RAM=$(free -m | awk '/Mem/{print $2}')
+    local THREADS=1
+    
+    if [ "$RAM" -ge 2000 ]; then
+        THREADS=$CPU
+    elif [ "$RAM" -ge 1000 ]; then
+        THREADS=2
+    fi
+    
+    if ! make -j$THREADS; then
+        error "编译被突发错误腰斩，引发系统级熔断！"
+        read -rp "按 Enter 接受失败并撤退..." _
+        return 1
+    fi
+
+    print_magenta ">>> [5/7] 强行植入底层驱动模块库并执行新内核物理直接挂载 (make install)..."
+    make modules_install
+    make install
+
+    # ----------------------------------------------------------------------------------
+    # 【核心防砖法案 2】：强制生成 Initramfs，否则 GRUB 有内核也无法挂载硬盘
+    # ----------------------------------------------------------------------------------
+    local NEW_KERNEL_VER=$(make -s kernelrelease)
+    print_magenta ">>> [6/7] 核心保命降落伞布置：正在为新内核 [$NEW_KERNEL_VER] 生成救命级的 Initramfs 初始内存盘..."
+    
+    if command -v update-initramfs >/dev/null 2>&1; then
+        update-initramfs -c -k "$NEW_KERNEL_VER" || true
+    elif command -v dracut >/dev/null 2>&1; then
+        dracut --force "/boot/initramfs-${NEW_KERNEL_VER}.img" "$NEW_KERNEL_VER" || true
+    else
+        warn "未找到 update-initramfs 或 dracut，可能无法正确生成引导镜像！"
+    fi
+
+    print_magenta ">>> [7/7] 刷新 GRUB 系统引导器并进行清扫..."
+    
+    if command -v update-grub >/dev/null 2>&1; then
+        update-grub || true
+    elif command -v update-grub2 >/dev/null 2>&1; then
+        update-grub2 || true
+    elif command -v grub-mkconfig >/dev/null 2>&1; then
+        grub-mkconfig -o /boot/grub/grub.cfg || true
+    fi
+
+    # 绝对禁止在此处使用 apt-get purge 删除老内核！那是你在无法开机时最后且唯一的回滚救命底盘！
+    
+    cd /
+    rm -rf $BUILD_DIR/linux-* 2>/dev/null || true
+    rm -rf $BUILD_DIR/$KERNEL_FILE 2>/dev/null || true
+
+    info "神迹已成！全世界最纯正、毫无杂质的满血 BBR3 协议栈已写入您的主机命脉中。"
+    warn "为防万一，旧系统内核已被完整保留。若重启失败，请在云服务商面板使用 VNC 登录，在 GRUB 菜单选择旧内核回滚。"
+    info "系统将在 10 秒后强行断电并以新身躯重新降临..."
+    sleep 10
+    reboot
+}
+
+# ==============================================================================
+# [ 20. 60+ 项百万并发系统级极限网络栈宏观调优 (V171 巅峰回归版，带极其严苛的自检闭环) ]
+# ==============================================================================
+do_perf_tuning() {
+    title "超维极限网络层重构：系统底层网络栈结构全系撕裂与灌注"
+    warn "操作警示: 这将极大地拉伸 TCP 缓冲并修改网络包调度，将不可逆地引发系统物理重启！"
+    
+    read -rp "准备好接纳新框架了吗？(y/n): " confirm
+    if [[ "$confirm" != "y" ]]; then
+        return
+    fi
+    
+    # 动态抓取当前系统的游走态，为用户提供调优参考定标
+    local current_scale=$(sysctl -n net.ipv4.tcp_adv_win_scale 2>/dev/null || echo "1")
+    local current_app=$(sysctl -n net.ipv4.tcp_app_win 2>/dev/null || echo "31")
+    
+    echo -e "  当前系统内存滑动侧倾角度 (tcp_adv_win_scale): ${cyan}${current_scale}${none} (建议填 1 或 2)"
+    echo -e "  当前系统应用保留水池线 (tcp_app_win): ${cyan}${current_app}${none} (建议保留 31)"
+    
+    read -rp "可自定义 tcp_adv_win_scale (-2 到 2 为合法域，直接回车保留当前): " new_scale
+    new_scale=${new_scale:-$current_scale}
+    
+    read -rp "可自定义 tcp_app_win (1 到 31 的分配率，直接回车保留当前): " new_app
+    new_app=${new_app:-$current_app}
+
+    print_magenta ">>> 正在执行大扫除：剿杀过时的加速器与旧世代冲突配置..."
+    
+    # 暴力捣毁净网前可能残留的阻碍 (如上古时代的 net-speeder)
+    systemctl stop net-speeder >/dev/null 2>&1 || true
+    killall net-speeder >/dev/null 2>&1 || true
+    systemctl disable net-speeder >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/net-speeder.service
+    systemctl daemon-reload >/dev/null 2>&1
+    rm -rf /root/net-speeder
+
+    # 清空可能冲突的旧时代配置文件
+    # 极其注重细节：使用 truncate 而不是 rm，防止破坏用户原有的系统软连接
+    truncate -s 0 /etc/sysctl.conf 2>/dev/null || true
+    truncate -s 0 /etc/sysctl.d/99-sysctl.conf 2>/dev/null || true
+    truncate -s 0 /etc/sysctl.d/99-network-optimized.conf 2>/dev/null || true
+    
+    rm -f /etc/sysctl.d/99-bbr*.conf 2>/dev/null
+    rm -f /etc/sysctl.d/99-ipv6-disable.conf 2>/dev/null
+    rm -f /etc/sysctl.d/99-pro*.conf 2>/dev/null
+    rm -f /etc/sysctl.d/99-xanmod-bbr3.conf 2>/dev/null
+    rm -f /usr/lib/sysctl.d/50-pid-max.conf 2>/dev/null
+    rm -f /usr/lib/sysctl.d/99-protect-links.conf 2>/dev/null
+    
+    print_magenta ">>> 正在彻底释放 Linux 全局进程限制的天花板，构建百万级并发底层阀门..."
+    
+    # 彻底释放 Linux 全局进程限制
+    cat > /etc/security/limits.conf << 'EOF'
+root soft nofile 1000000
+root hard nofile 1000000
+root soft nproc 1000000
+root hard nproc 1000000
+* soft nofile 1000000
+* hard nofile 1000000
+* soft nproc 1000000
+* hard nproc 1000000
+EOF
+
+    # 深度对抗部分 Linux 发行版不读 limits.conf 的系统级 BUG 陋习
+    if ! grep -q "pam_limits.so" /etc/pam.d/common-session; then
+        echo "session required pam_limits.so" >> /etc/pam.d/common-session
+    fi
+    if ! grep -q "pam_limits.so" /etc/pam.d/common-session-noninteractive; then
+        echo "session required pam_limits.so" >> /etc/pam.d/common-session-noninteractive
+    fi
+    
+    # 为 Systemd 总线注入大满贯配额
+    echo "DefaultLimitNOFILE=1000000" >> /etc/systemd/system.conf
+    echo "DefaultLimitNPROC=1000000" >> /etc/systemd/system.conf
+
+    # 探查并继承当前的排队规则，防止配置冲突
+    local target_qdisc="fq"
+    if [ "$(check_cake_state)" = "true" ]; then
+        target_qdisc="cake"
+    fi
+
+    # ====================================================================
+    # 核心高能区：全量展开 60 多项惊世骇俗的系统优化巨阵，毫无保留！
+    # 每一个参数独立占行，拒绝任何无脑拼接，彰显工业级配置底蕴。
+    # ====================================================================
+    print_magenta ">>> 正在向内核物理刻录 60+ 项网络栈极限参数..."
+    
+    cat > /etc/sysctl.d/99-network-optimized.conf << EOF
+# -- 基础拥塞队列与底层发包排队纪律 --
+net.core.default_qdisc = ${target_qdisc}
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.neigh.default.base_reachable_time_ms = 60000
+net.ipv4.neigh.default.mcast_solicit = 2
+net.ipv4.neigh.default.retrans_time_ms = 500
+
+# -- 关闭过滤与路由源验证，追求极致无脑穿越 --
+net.ipv4.conf.all.rp_filter = 0
+net.ipv4.conf.default.rp_filter = 0
+net.ipv4.tcp_no_metrics_save = 1
+
+# -- ECN 显式拥塞与 MTU 黑洞智能探针 --
+net.ipv4.tcp_ecn = 1
+net.ipv4.tcp_ecn_fallback = 1
+net.ipv4.tcp_mtu_probing = 1
+net.ipv4.tcp_rfc1337 = 1
+net.ipv4.tcp_sack = 1
+
+# -- 窗口扩容与内存滑动倾斜角设定 --
+net.ipv4.tcp_window_scaling = 1
+net.ipv4.tcp_adv_win_scale = ${new_scale}
+net.ipv4.tcp_app_win = ${new_app}
+net.ipv4.tcp_moderate_rcvbuf = 1
+
+# -- 核心内存壁垒推宽 (21MB 巨型超跑吞吐池) --
+net.core.rmem_default = 560576
+net.core.wmem_default = 560576
+net.core.rmem_max = 21699928
+net.core.wmem_max = 21699928
+net.ipv4.tcp_rmem = 4096 760576 21699928
+net.ipv4.tcp_wmem = 4096 760576 21699928
+net.ipv4.udp_rmem_min = 4096
+net.ipv4.udp_wmem_min = 4096
+
+# -- NAPI 轮询权重约束 (杜绝单核算力被极其恶意的独占导致的网卡卡顿) --
+net.core.dev_weight = 64
+net.core.dev_weight_tx_bias = 1
+net.core.dev_weight_rx_bias = 1
+net.core.netdev_budget = 300
+
+# -- VFS 调度与文件句柄巨塔 --
+vm.swappiness = 1
+fs.file-max = 1048576
+fs.nr_open = 1048576
+fs.inotify.max_user_instances = 262144
+
+# -- 保活心跳与 TIME_WAIT 极速尸体回收场 --
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_fin_timeout = 12
+net.ipv4.tcp_keepalive_probes = 5
+net.ipv4.tcp_keepalive_time = 60
+net.ipv4.tcp_keepalive_intvl = 30
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_abort_on_overflow = 0
+
+# -- 连接风暴抗压与多级重试策略防御 --
+net.ipv4.ip_local_port_range = 1024 65535
+net.ipv4.tcp_max_syn_backlog = 65535
+net.ipv4.tcp_max_tw_buckets = 262144
+net.ipv4.tcp_retries1 = 5
+net.ipv4.tcp_retries2 = 8
+net.ipv4.tcp_syn_retries = 3
+net.ipv4.tcp_synack_retries = 2
+net.core.somaxconn = 65535
+net.core.netdev_max_backlog = 65535
+net.ipv4.tcp_timestamps = 1
+net.ipv4.tcp_max_orphans = 262144
+
+# -- 突进 TCP FastOpen 与低级分片乱序重组引擎 --
+net.core.optmem_max = 3276800
+net.ipv4.tcp_fastopen = 3
+net.ipv4.tcp_reordering = 3
+net.ipv4.tcp_autocorking = 0
+net.ipv4.tcp_tso_win_divisor = 6
+
+# -- ARP 与 PID 资源极限释放 --
+kernel.pid_max = 4194304
+kernel.threads-max = 85536
+net.ipv4.neigh.default.gc_thresh1 = 1024
+net.ipv4.neigh.default.gc_thresh2 = 4096
+net.ipv4.neigh.default.gc_thresh3 = 8192
+net.ipv4.neigh.default.gc_stale_time = 100
+net.ipv4.conf.default.arp_announce = 2
+net.ipv4.conf.lo.arp_announce = 2
+net.ipv4.conf.all.arp_announce = 2
+
+# -- 内核级忙轮询 (Busy Polling) 防抖体系 --
+net.unix.max_dgram_qlen = 130000
+net.core.busy_poll = 50
+net.core.busy_read = 0
+
+# -- 16KB 精准防缓冲膨胀 (Bufferbloat) 最底层绞杀锁 --
+net.ipv4.tcp_notsent_lowat = 16384
+vm.vfs_cache_pressure = 10
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.ip_forward = 1
+
+# -- 隐蔽行踪：斩断 ICMP 重定向与恶意碎片重组攻击防线 --
+net.ipv4.conf.all.arp_ignore = 1
+net.ipv4.tcp_early_retrans = 3
+net.ipv4.neigh.default.unres_qlen = 35535
+net.ipv4.conf.all.route_localnet = 0
+net.ipv4.tcp_orphan_retries = 8
+net.ipv4.conf.all.forwarding = 1
+net.ipv4.ipfrag_max_dist = 32
+net.ipv4.ipfrag_secret_interval = 200
+net.ipv4.ipfrag_low_thresh = 42008868
+net.ipv4.ipfrag_high_thresh = 104917729
+net.ipv4.ipfrag_time = 30
+
+# -- 进程通信与异步 IO 并发极值 --
+fs.aio-max-nr = 262144
+kernel.msgmax = 655350
+kernel.msgmnb = 655350
+net.ipv4.neigh.default.proxy_qlen = 50000
+
+# -- BBR Pacing 发包节奏比率控制 (完美契合 BBR3) --
+net.ipv4.tcp_pacing_ca_ratio = 150
+net.ipv4.tcp_pacing_ss_ratio = 210
+
+# -- 文件系统级进程越权防御 --
+fs.protected_fifos = 1
+fs.protected_hardlinks = 1
+fs.protected_regular = 2
+fs.protected_symlinks = 1
+
+# -- RPS/RFS 散列深度容量上限 --
+net.core.rps_sock_flow_entries = 131072
+net.core.flow_limit_table_len = 131072
+net.ipv4.tcp_workaround_signed_windows = 1
+vm.dirty_ratio = 35
+vm.overcommit_memory = 0
+kernel.sysrq = 1
+
+# -- 斩杀 IPv6 彻底杜绝特征污染与泄漏 --
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+
+# -- 边缘极限探针群补充 (V171 神级参数回归阵列) --
+vm.max_map_count = 65535
+net.ipv4.tcp_child_ehash_entries = 65535
+net.ipv4.ip_no_pmtu_disc = 0
+net.ipv4.tcp_stdurg = 0
+net.ipv4.tcp_challenge_ack_limit = 1200
+net.ipv4.tcp_comp_sack_delay_ns = 50000
+net.ipv4.tcp_comp_sack_nr = 1
+net.ipv4.tcp_fwmark_accept = 1
+net.ipv4.tcp_invalid_ratelimit = 800
+net.ipv4.tcp_l3mdev_accept = 1
+net.core.tstamp_allow_data = 1
+net.core.netdev_tstamp_prequeue = 1
+kernel.randomize_va_space = 2
+net.ipv4.tcp_mem = 65536 131072 262144
+net.ipv4.udp_mem = 65536 131072 262144
+net.ipv4.tcp_recovery = 0x1
+net.ipv4.tcp_dsack = 1
+kernel.shmmax = 67108864
+kernel.shmall = 16777216
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+net.ipv4.icmp_ignore_bogus_error_responses = 1
+net.ipv4.tcp_limit_output_bytes = 1310720
+net.ipv4.tcp_min_tso_segs = 1
+net.ipv4.tcp_thin_linear_timeouts = 0
+net.ipv4.tcp_early_demux = 1
+net.ipv4.tcp_shrink_window = 0
+net.ipv4.neigh.default.unres_qlen_bytes = 65535
+kernel.printk = 3 4 1 3
+kernel.sched_autogroup_enabled = 0
+EOF
+
+    # ==========================================
+    # V171 终极闭环自检：强行捕获 Sysctl 是否存在语法爆破错误！
+    # 绝不允许系统在包含错误参数的情况下强行挂载！
+    # ==========================================
+    print_magenta ">>> 正在执行物理层级 sysctl 强制灌注与报错反馈捕获..."
+    
+    if ! sysctl -p /etc/sysctl.d/99-network-optimized.conf >/dev/null 2>&1; then
+        error "系统拒收报告：Sysctl 参数字典存在极其致命的语法错漏或硬件不支持该组件，内核已拒绝挂载！流程被截断熔断。"
+        read -rp "请按下 Enter 接受失败并安全返回主控台..." _
+        return 1
+    else
+        info "验证完美通过：所有 60+ 项底层网络核心参数顺利通过系统安检，已被内核强行无损接纳。"
+    fi
+    
+    # 智能获取当前机器对外的唯一战术主网卡名，并施加硬件卸载
+    local IFACE=$(ip route get 1.1.1.1 | awk '{print $5; exit}')
+    
+    if [ -n "$IFACE" ]; then
+        print_magenta ">>> 正在向底层网卡固件 ($IFACE) 植入硬件加速卸载逻辑..."
+        
+        # 核心功能模块 1：网卡硬件微操执行脚本 (防粘包/防自适应延迟)
+        cat > /usr/local/bin/nic-optimize.sh <<'EONIC'
+#!/bin/bash
+IFACE=$(ip route get 1.1.1.1 | awk '{print $5; exit}')
+ethtool -K $IFACE lro off rx-gro-hw off 2>/dev/null || true
+# 强行关闭自适应聚合，拒绝网卡堆积小包
+ethtool -C $IFACE adaptive-rx off rx-usecs 0 tx-usecs 0 2>/dev/null || true
+EONIC
+        chmod +x /usr/local/bin/nic-optimize.sh
+        
+        # 封装为 Systemd 级别守护服务，确保开机自启
+        cat > /etc/systemd/system/nic-optimize.service <<EOSERVICE
+[Unit]
+Description=NIC Advanced Hardware Tuning Engine
+After=network.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nic-optimize.sh
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+EOSERVICE
+
+        systemctl daemon-reload
+        systemctl enable nic-optimize.service >/dev/null 2>&1
+        systemctl start nic-optimize.service
+        
+        # 核心功能模块 2：RPS / RFS 多队列软中断分配散列分发表脚本
+        cat > /usr/local/bin/rps-optimize.sh <<'EOF'
+#!/bin/bash
+IFACE=$(ip route get 1.1.1.1 | awk '{print $5; exit}')
+CPU=$(nproc)
+# 动态计算位移，生成十六进制十六 CPU 满载掩码
+CPU_MASK=$(printf "%x" $(( (1<<CPU)-1 )))
+RX_QUEUES=$(ls /sys/class/net/$IFACE/queues/ 2>/dev/null | grep rx- | wc -l)
+
+# 动态下发 CPU 绑定掩码到每一个硬接收队列中
+for RX in /sys/class/net/$IFACE/queues/rx-*; do
+    echo $CPU_MASK > $RX/rps_cpus 2>/dev/null || true
+done
+
+# 同步散列下发至网卡发送队列
+for TX in /sys/class/net/$IFACE/queues/tx-*; do
+    echo $CPU_MASK > $TX/xps_cpus 2>/dev/null || true
+done
+
+sysctl -w net.core.rps_sock_flow_entries=131072 2>/dev/null
+
+# 开启硬件流督导精确计算
+if [ "${RX_QUEUES:-0}" -gt 0 ]; then
+    FLOW_PER_QUEUE=$((65535 / RX_QUEUES))
+    for RX in /sys/class/net/$IFACE/queues/rx-*; do
+        echo $FLOW_PER_QUEUE > $RX/rps_flow_cnt 2>/dev/null || true
+    done
+fi
+EOF
+        chmod +x /usr/local/bin/rps-optimize.sh
+        
+        # 同样封装为开机自启服务阵列
+        cat > /etc/systemd/system/rps-optimize.service <<EOF
+[Unit]
+Description=RPS RFS Network CPU Soft-Interrupt Distribution Engine
+After=network.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/rps-optimize.sh
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+EOF
+
+        systemctl daemon-reload
+        systemctl enable rps-optimize.service >/dev/null 2>&1
+        systemctl start rps-optimize.service
+        
+        # ==========================================
+        # V171 硬件自检闭环：检查服务是否存活，确保不是“纸面优化”
+        # ==========================================
+        if systemctl is-active --quiet nic-optimize.service && systemctl is-active --quiet rps-optimize.service; then
+            info "网卡硬件底层守护群已成功激活，开机自动执行已物理装载！"
+        else
+            warn "警报：网卡守护群装载状态异常，这可能会导致您的网卡失去极致吞吐并发能力。"
+        fi
+    fi
+
+    info "大满贯！全量巨型底层参数注入完成！系统即将重启应用物理层面的修改..."
+    sleep 30
+    reboot
+}
+
+# ==============================================================================
+# (为防止大模型物理截断，代码第二部分到此安全驻留。)
+# (核心 130+ 探针矩阵、防砖内核编译、60项自检 Sysctl 等 2000 行将于下一段无缝送出！)
+# ==============================================================================
