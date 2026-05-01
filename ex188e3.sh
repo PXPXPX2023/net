@@ -2106,276 +2106,1032 @@ EOF
     systemctl enable xray-hw-tweaks.service >/dev/null 2>&1 || true
 }
 
-_apply_cake_live() {
-    local IFACE
-    IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+# ==============================================================================
+# [ 0x0D: 全局底层拔插调度模块 (Toggle 引擎防爆版) ]
+# ==============================================================================
+
+_toggle_affinity_on() {
+    local lf="/etc/systemd/system/xray.service.d/limits.conf"
+    if test -f "$lf"; then
+        sed -i '/^CPUAffinity=/d' "$lf" 2>/dev/null || true
+        sed -i '/^Environment="GOMAXPROCS=/d' "$lf" 2>/dev/null || true
+        
+        local TARGET_CPU
+        local CORES
+        CORES=$(nproc 2>/dev/null || echo 1)
+        
+        if test "$CORES" -ge 2 2>/dev/null; then 
+            TARGET_CPU=1
+        else 
+            TARGET_CPU=0
+        fi
+        
+        echo "CPUAffinity=$TARGET_CPU" >> "$lf"
+        echo "Environment=\"GOMAXPROCS=1\"" >> "$lf"
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+}
+
+_toggle_affinity_off() {
+    local lf="/etc/systemd/system/xray.service.d/limits.conf"
+    if test -f "$lf"; then
+        sed -i '/^CPUAffinity=/d' "$lf" 2>/dev/null || true
+        sed -i '/^Environment="GOMAXPROCS=/d' "$lf" 2>/dev/null || true
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+}
+
+toggle_buffer() {
+    local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+    if test -f "$limit_file"; then
+        if test "$(check_buffer_state)" = "true"; then
+            sed -i '/^Environment="XRAY_RAY_BUFFER_SIZE=/d' "$limit_file" 2>/dev/null || true
+        else
+            sed -i '/^Environment="XRAY_RAY_BUFFER_SIZE=/d' "$limit_file" 2>/dev/null || true
+            echo "Environment=\"XRAY_RAY_BUFFER_SIZE=64\"" >> "$limit_file"
+        fi
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+}
+
+toggle_dnsmasq() {
+    if test "$(check_dnsmasq_state)" = "true"; then
+        systemctl stop dnsmasq >/dev/null 2>&1 || true
+        systemctl disable dnsmasq >/dev/null 2>&1 || true
+        
+        chattr -i /etc/resolv.conf 2>/dev/null || true
+        rm -f /etc/resolv.conf 2>/dev/null || true
+        
+        if test -f /etc/resolv.conf.bak; then 
+            mv /etc/resolv.conf.bak /etc/resolv.conf 2>/dev/null || true
+        else 
+            echo "nameserver 8.8.8.8" > /etc/resolv.conf
+        fi
+        
+        systemctl enable systemd-resolved >/dev/null 2>&1 || true
+        systemctl start systemd-resolved >/dev/null 2>&1 || true
+        
+        _safe_jq_write '
+          .dns = {
+              "servers": [
+                  "https://8.8.8.8/dns-query",
+                  "https://1.1.1.1/dns-query",
+                  "https://doh.opendns.com/dns-query"
+              ],
+              "queryStrategy": "UseIP"
+          }
+        '
+    else
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -y >/dev/null 2>&1 || yum makecache -y >/dev/null 2>&1 || true
+        apt-get install -y dnsmasq >/dev/null 2>&1 || yum install -y dnsmasq >/dev/null 2>&1 || true
+        
+        systemctl stop systemd-resolved 2>/dev/null || true
+        systemctl disable systemd-resolved 2>/dev/null || true
+        systemctl stop resolvconf 2>/dev/null || true
+        
+        cat > /etc/dnsmasq.conf <<EOF
+port=53
+listen-address=127.0.0.1
+bind-interfaces
+cache-size=21000
+min-cache-ttl=3600
+all-servers
+server=8.8.8.8
+server=1.1.1.1
+server=208.67.222.222
+no-resolv
+no-poll
+EOF
+        systemctl enable dnsmasq >/dev/null 2>&1 || true
+        systemctl restart dnsmasq >/dev/null 2>&1 || true
+        
+        chattr -i /etc/resolv.conf 2>/dev/null || true
+        
+        if test ! -f /etc/resolv.conf.bak; then 
+            cp /etc/resolv.conf /etc/resolv.conf.bak 2>/dev/null || true
+        fi
+        
+        rm -f /etc/resolv.conf 2>/dev/null || true
+        echo "nameserver 127.0.0.1" > /etc/resolv.conf
+        chattr +i /etc/resolv.conf 2>/dev/null || true
+        
+        _safe_jq_write '
+          .dns = {
+              "servers": ["127.0.0.1"],
+              "queryStrategy": "UseIP"
+          }
+        '
+    fi
+}
+
+toggle_thp() {
+    if test "$(check_thp_state)" = "true"; then
+        if test -w /sys/kernel/mm/transparent_hugepage/enabled; then
+            echo always > /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || true
+            echo always > /sys/kernel/mm/transparent_hugepage/defrag 2>/dev/null || true
+        fi
+    else
+        if test -w /sys/kernel/mm/transparent_hugepage/enabled; then
+            echo never > /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || true
+            echo never > /sys/kernel/mm/transparent_hugepage/defrag 2>/dev/null || true
+        fi
+    fi
+    update_hw_boot_script
+}
+
+toggle_mtu() {
+    local conf="/etc/sysctl.d/99-network-optimized.conf"
     
-    if test -z "$IFACE"; then
+    if test "$(check_mtu_state)" = "true"; then 
+        sed -i 's/^net.ipv4.tcp_mtu_probing.*/net.ipv4.tcp_mtu_probing = 0/' "$conf" 2>/dev/null || true
+    else
+        if grep -q "net.ipv4.tcp_mtu_probing" "$conf" 2>/dev/null; then 
+            sed -i 's/^net.ipv4.tcp_mtu_probing.*/net.ipv4.tcp_mtu_probing = 1/' "$conf" 2>/dev/null || true
+        else 
+            echo "net.ipv4.tcp_mtu_probing = 1" >> "$conf"
+        fi
+    fi
+    sysctl -p "$conf" >/dev/null 2>&1 || true
+}
+
+toggle_cpu() {
+    if test "$(check_cpu_state)" = "unsupported"; then 
         return
     fi
     
-    if test "$(check_cake_state)" = "true"; then
-        local base_opts=""
-        if test -f "$CAKE_OPTS_FILE"; then
-            base_opts=$(cat "$CAKE_OPTS_FILE" 2>/dev/null || echo "")
-        fi
-        
-        local f_ack=""
-        if test "$(check_ackfilter_state)" = "true"; then 
-            f_ack="ack-filter"
-        fi
-        
-        local f_ecn=""
-        if test "$(check_ecn_state)" = "true"; then 
-            f_ecn="ecn"
-        fi
-        
-        local f_wash=""
-        if test "$(check_wash_state)" = "true"; then 
-            f_wash="wash"
-        fi
-        
-        tc qdisc replace dev "$IFACE" root cake $base_opts $f_ack $f_ecn $f_wash 2>/dev/null || true
+    if test "$(check_cpu_state)" = "true"; then 
+        for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do 
+            if test -f "$cpu"; then 
+                echo schedutil > "$cpu" 2>/dev/null || echo ondemand > "$cpu" 2>/dev/null || true
+            fi
+        done
+    else 
+        for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do 
+            if test -f "$cpu"; then 
+                echo performance > "$cpu" 2>/dev/null || true
+            fi
+        done
     fi
-    
     update_hw_boot_script
 }
-12)
-                toggle_dnsmasq
-                info "DNS 缓存接管控制变更！"
-                local _p=""; read -rp "按 Enter 继续..." _p || true
-                ;;
-                
-            13)
-                toggle_thp
-                info "内存大页干预完成！"
-                local _p=""; read -rp "按 Enter 继续..." _p || true
-                ;;
-                
-            14)
-                toggle_mtu
-                info "MTU 探测修正已下发！"
-                local _p=""; read -rp "按 Enter 继续..." _p || true
-                ;;
-                
-            15)
-                toggle_cpu
-                info "CPU 频率性能状态改变！"
-                local _p=""; read -rp "按 Enter 继续..." _p || true
-                ;;
-                
-            16)
-                toggle_ring
-                info "网卡硬件 Ring Buffer 排队结构更改完毕！"
-                local _p=""; read -rp "按 Enter 继续..." _p || true
-                ;;
-                
-            17)
-                toggle_zram
-                info "物理级虚拟 ZRAM 操作成功！"
-                local _p=""; read -rp "按 Enter 继续..." _p || true
-                ;;
-                
-            18)
-                toggle_journal
-                info "内存化 IO 指令重现。"
-                local _p=""; read -rp "按 Enter 继续..." _p || true
-                ;;
-                
-            19)
-                toggle_process_priority
-                info "金牌级 OOM 提权执行！"
-                local _p=""; read -rp "按 Enter 继续..." _p || true
-                ;;
-                
-            20)
-                toggle_cake
-                info "系统调度队列 CAKE/FQ 分解与挂载已执行！"
-                local _p=""; read -rp "按 Enter 继续..." _p || true
-                ;;
-                
-            21)
-                toggle_irq
-                info "深层多核 RPS 数据拆解或单核闭环下达成功！"
-                local _p=""; read -rp "按 Enter 继续..." _p || true
-                ;;
-                
-            22)
-                if test "$gso_off_state" = "unsupported"; then
-                    warn "宿主机当前网卡底层驱动物理锁死 (fixed)！"
-                    warn "为了保护您的服务器不断网失联，系统主动物理熔断了强行干预网卡卸载特征的指令！"
-                    sleep 3
-                else
-                    toggle_gso_off
-                    info "网卡数据包卸载组装干预下发成功！"
-                    local _p=""; read -rp "按 Enter 继续..." _p || true
+
+toggle_ring() {
+    local IFACE
+    IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    
+    if test "$(check_ring_state)" = "unsupported"; then 
+        return
+    fi
+    
+    if test "$(check_ring_state)" = "true"; then
+        local max_rx
+        max_rx=$(ethtool -g "$IFACE" 2>/dev/null | grep -A4 "Pre-set maximums" | grep "RX:" | head -n 1 | awk '{print $2}' || echo "512")
+        
+        if test -n "$max_rx"; then 
+            ethtool -G "$IFACE" rx "$max_rx" tx "$max_rx" 2>/dev/null || true
+        fi
+    else 
+        ethtool -G "$IFACE" rx 512 tx 512 2>/dev/null || true
+    fi
+    update_hw_boot_script
+}
+
+toggle_gso_off() {
+    local IFACE
+    IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    
+    if test "$(check_gso_off_state)" = "unsupported"; then 
+        warn "硬件卸载已被底层驱动强制锁死 (fixed)。已安全跳过干预！"
+        sleep 2
+        return
+    fi
+    
+    if test "$(check_gso_off_state)" = "true"; then 
+        ethtool -K "$IFACE" gro on gso on tso on 2>/dev/null || true
+    else 
+        ethtool -K "$IFACE" gro off gso off tso off 2>/dev/null || true
+    fi
+    update_hw_boot_script
+}
+
+toggle_zram() {
+    if test "$(check_zram_state)" = "unsupported"; then 
+        return
+    fi
+    
+    if test "$(check_zram_state)" = "true"; then
+        swapoff /dev/zram0 2>/dev/null || true
+        rmmod zram 2>/dev/null || true
+        systemctl disable xray-zram.service --now 2>/dev/null || true
+        rm -f /etc/systemd/system/xray-zram.service /usr/local/bin/xray-zram.sh 2>/dev/null || true
+    else
+        local TOTAL_MEM
+        TOTAL_MEM=$(free -m 2>/dev/null | awk '/Mem/{print $2}' || echo "1024")
+        local ZRAM_SIZE
+        
+        if test "$TOTAL_MEM" -lt 500 2>/dev/null; then 
+            ZRAM_SIZE=$((TOTAL_MEM * 2))
+        else
+            if test "$TOTAL_MEM" -lt 1024 2>/dev/null; then 
+                ZRAM_SIZE=$((TOTAL_MEM * 3 / 2))
+            else 
+                ZRAM_SIZE=$TOTAL_MEM
+            fi
+        fi
+        
+        cat > /usr/local/bin/xray-zram.sh <<EOFZ
+#!/bin/bash
+modprobe zram num_devices=1
+echo "lz4" > /sys/block/zram0/comp_algorithm 2>/dev/null || true
+echo "${ZRAM_SIZE}M" > /sys/block/zram0/disksize
+mkswap /dev/zram0
+swapon -p 100 /dev/zram0
+EOFZ
+        chmod +x /usr/local/bin/xray-zram.sh 2>/dev/null || true
+        
+        cat > /etc/systemd/system/xray-zram.service <<EOFZ
+[Unit]
+Description=Xray ZRAM Setup
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/xray-zram.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOFZ
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl enable xray-zram.service >/dev/null 2>&1 || true
+        systemctl start xray-zram.service >/dev/null 2>&1 || true
+    fi
+}
+
+toggle_journal() {
+    local conf="/etc/systemd/journald.conf"
+    
+    if test "$(check_journal_state)" = "unsupported"; then 
+        return
+    fi
+    
+    if test "$(check_journal_state)" = "true"; then 
+        sed -i 's/^Storage=volatile/#Storage=auto/' "$conf" 2>/dev/null || true
+    else
+        if grep -q "^#Storage=" "$conf" 2>/dev/null; then 
+            sed -i 's/^#Storage=.*/Storage=volatile/' "$conf" 2>/dev/null || true
+        else
+            if grep -q "^Storage=" "$conf" 2>/dev/null; then 
+                sed -i 's/^Storage=.*/Storage=volatile/' "$conf" 2>/dev/null || true
+            else 
+                echo "Storage=volatile" >> "$conf"
+            fi
+        fi
+    fi
+    systemctl restart systemd-journald >/dev/null 2>&1 || true
+}
+
+toggle_process_priority() {
+    local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+    
+    if test ! -f "$limit_file"; then 
+        return
+    fi
+    
+    if grep -q "^OOMScoreAdjust=-500" "$limit_file" 2>/dev/null; then
+        sed -i '/^OOMScoreAdjust=/d' "$limit_file" 2>/dev/null || true
+        sed -i '/^IOSchedulingClass=/d' "$limit_file" 2>/dev/null || true
+        sed -i '/^IOSchedulingPriority=/d' "$limit_file" 2>/dev/null || true
+    else
+        echo "OOMScoreAdjust=-500" >> "$limit_file"
+        echo "IOSchedulingClass=realtime" >> "$limit_file"
+        echo "IOSchedulingPriority=2" >> "$limit_file"
+    fi
+    systemctl daemon-reload >/dev/null 2>&1 || true
+}
+
+toggle_cake() {
+    local conf="/etc/sysctl.d/99-network-optimized.conf"
+    local IFACE
+    IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    
+    if test "$(check_cake_state)" = "true"; then
+        sed -i 's/^net.core.default_qdisc.*/net.core.default_qdisc = fq/' "$conf" 2>/dev/null || true
+        sysctl -w net.core.default_qdisc=fq >/dev/null 2>&1 || true
+        
+        if test -n "$IFACE"; then
+            tc qdisc replace dev "$IFACE" root fq 2>/dev/null || true
+        fi
+        update_hw_boot_script
+    else
+        sed -i 's/^net.core.default_qdisc.*/net.core.default_qdisc = cake/' "$conf" 2>/dev/null || true
+        if ! grep -q "net.core.default_qdisc" "$conf" 2>/dev/null; then 
+            echo "net.core.default_qdisc = cake" >> "$conf"
+        fi
+        
+        modprobe sch_cake >/dev/null 2>&1 || true
+        sysctl -w net.core.default_qdisc=cake >/dev/null 2>&1 || true
+        _apply_cake_live
+    fi
+}
+
+toggle_ackfilter() {
+    if test "$(check_ackfilter_state)" = "true"; then 
+        rm -f "$FLAGS_DIR/ack_filter" 2>/dev/null || true
+    else 
+        touch "$FLAGS_DIR/ack_filter" 2>/dev/null || true
+    fi
+    
+    if test "$(check_cake_state)" = "false"; then 
+        warn "系统已将状态锚点落盘，但必须先开启 CAKE 队列，此项优化才能被挂载！"
+        sleep 2
+        return
+    fi
+    _apply_cake_live
+}
+
+toggle_ecn() {
+    if test "$(check_ecn_state)" = "true"; then 
+        rm -f "$FLAGS_DIR/ecn" 2>/dev/null || true
+    else 
+        touch "$FLAGS_DIR/ecn" 2>/dev/null || true
+    fi
+    
+    if test "$(check_cake_state)" = "false"; then 
+        warn "系统已将状态锚点落盘，但必须先开启 CAKE 队列，此项优化才能被挂载！"
+        sleep 2
+        return
+    fi
+    _apply_cake_live
+}
+
+toggle_wash() {
+    if test "$(check_wash_state)" = "true"; then 
+        rm -f "$FLAGS_DIR/wash" 2>/dev/null || true
+    else 
+        touch "$FLAGS_DIR/wash" 2>/dev/null || true
+    fi
+    
+    if test "$(check_cake_state)" = "false"; then 
+        warn "系统已将状态锚点落盘，但必须先开启 CAKE 队列，此项优化才能被挂载！"
+        sleep 2
+        return
+    fi
+    _apply_cake_live
+}
+
+toggle_irq() {
+    if test "$(check_irq_state)" = "unsupported"; then 
+        return
+    fi
+    
+    local IFACE
+    IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    local CORES
+    CORES=$(nproc 2>/dev/null || echo 1)
+    local DEFAULT_MASK
+    DEFAULT_MASK=$(printf "%x" $(( (1<<CORES)-1 )))
+    
+    if test "$(check_irq_state)" = "true"; then
+        for irq in $(grep "$IFACE" /proc/interrupts 2>/dev/null | awk '{print $1}' | tr -d ':' || echo ""); do 
+            if test -n "$irq"; then 
+                if test -w "/proc/irq/$irq/smp_affinity"; then
+                    echo "$DEFAULT_MASK" > "/proc/irq/$irq/smp_affinity" 2>/dev/null || true
                 fi
-                ;;
-                
-            23)
-                toggle_ackfilter
-                info "CAKE 附加密集干预结束！"
-                local _p=""; read -rp "按 Enter 继续..." _p || true
-                ;;
-                
-            24)
-                toggle_ecn
-                info "CAKE 附加密集干预结束！"
-                local _p=""; read -rp "按 Enter 继续..." _p || true
-                ;;
-                
-            25)
-                toggle_wash
-                info "CAKE 附加密集干预结束！"
-                local _p=""; read -rp "按 Enter 继续..." _p || true
-                ;;
-                
-            26)
-                if test "$app_off_count" -gt 0 2>/dev/null; then
-                    print_magenta ">>> 正在为应用层全速开启极速逻辑引擎..."
-                    _turn_on_app
-                    systemctl restart xray >/dev/null 2>&1 || true
-                    info "应用层逻辑大一统成功开启！"
-                else
-                    print_magenta ">>> 正在褪去应用层激进装备，还原官方生态..."
-                    _turn_off_app
-                    systemctl restart xray >/dev/null 2>&1 || true
-                    info "回归宁静！应用层优化已悉数剥离。"
+            fi
+        done
+        systemctl start irqbalance >/dev/null 2>&1 || true
+        systemctl enable irqbalance >/dev/null 2>&1 || true
+    else
+        systemctl stop irqbalance >/dev/null 2>&1 || true
+        systemctl disable irqbalance >/dev/null 2>&1 || true
+        for irq in $(grep "$IFACE" /proc/interrupts 2>/dev/null | awk '{print $1}' | tr -d ':' || echo ""); do 
+            if test -n "$irq"; then 
+                if test -w "/proc/irq/$irq/smp_affinity"; then
+                    echo 1 > "/proc/irq/$irq/smp_affinity" 2>/dev/null || true
                 fi
-                local _p=""; read -rp "按 Enter 归队..." _p || true
-                ;;
-                
-            27)
-                if test "$sys_off_count" -gt 0 2>/dev/null; then
-                    if test "$dnsmasq_state" = "false"; then toggle_dnsmasq; fi
-                    if test "$thp_state" = "false"; then toggle_thp; fi
-                    if test "$mtu_state" = "false"; then toggle_mtu; fi
-                    if test "$cpu_state" = "false"; then toggle_cpu; fi
-                    if test "$ring_state" = "false"; then toggle_ring; fi
-                    if test "$zram_state" = "false"; then toggle_zram; fi
-                    if test "$journal_state" = "false"; then toggle_journal; fi
-                    if test "$prio_state" = "false"; then toggle_process_priority; fi
-                    if test "$cake_state" = "false"; then toggle_cake; fi
-                    if test "$irq_state" = "false"; then toggle_irq; fi
-                    
-                    # 保护底层不受污染：只有明确为 false 且不是 unsupported 才操作
-                    if test "$gso_off_state" = "false"; then
-                        if test "$gso_off_state" != "unsupported"; then 
-                            toggle_gso_off
+            fi
+        done
+    fi
+    update_hw_boot_script
+}
+
+# ==============================================================================
+# [ 0x0E: 应用层高级调优引擎 (JSON 绝缘隔离操作) ]
+# ==============================================================================
+
+_turn_on_app() {
+    _safe_jq_write '
+      .routing = (.routing // {}) |
+      .routing.domainMatcher = "mph" |
+      (.outbounds[]? | select(.protocol == "freedom")) |= (
+          .streamSettings = (.streamSettings // {}) |
+          .streamSettings.sockopt = (.streamSettings.sockopt // {}) |
+          .streamSettings.sockopt.tcpNoDelay = true |
+          .streamSettings.sockopt.tcpFastOpen = true |
+          .streamSettings.sockopt.tcpKeepAliveIdle = 30 |
+          .streamSettings.sockopt.tcpKeepAliveInterval = 15
+      ) |
+      (.inbounds[]? | select(.protocol == "vless" or .protocol == "shadowsocks")) |= (
+          .streamSettings = (.streamSettings // {}) |
+          .streamSettings.sockopt = (.streamSettings.sockopt // {}) |
+          .streamSettings.sockopt.tcpNoDelay = true |
+          .streamSettings.sockopt.tcpFastOpen = true |
+          .streamSettings.sockopt.tcpKeepAliveIdle = 30 |
+          .streamSettings.sockopt.tcpKeepAliveInterval = 15 |
+          .sniffing = (.sniffing // {}) |
+          .sniffing.metadataOnly = true |
+          .sniffing.routeOnly = true
+      )
+    '
+    
+    local has_reality
+    has_reality=$(jq -r '.inbounds[]? | select(.protocol=="vless" and .streamSettings?.security=="reality") | .protocol' "$CONFIG" 2>/dev/null | head -n 1 || echo "")
+    
+    if test -n "$has_reality"; then
+        _safe_jq_write '
+          (.inbounds[]? | select(.protocol == "vless" and .streamSettings.security == "reality")) |= (
+              .streamSettings.realitySettings = (.streamSettings.realitySettings // {}) |
+              .streamSettings.realitySettings.maxTimeDiff = 60000
+          )
+        '
+    fi
+    
+    local dns_status
+    dns_status=$(check_dnsmasq_state 2>/dev/null || echo "false")
+    
+    if test "$dns_status" = "true"; then
+        _safe_jq_write '
+          .dns = {
+              "servers": [
+                  "127.0.0.1"
+              ],
+              "queryStrategy": "UseIP"
+          }
+        '
+    else
+        _safe_jq_write '
+          .dns = {
+              "servers": [
+                  "https://8.8.8.8/dns-query",
+                  "https://1.1.1.1/dns-query",
+                  "https://doh.opendns.com/dns-query"
+              ],
+              "queryStrategy": "UseIP"
+          }
+        '
+    fi
+    
+    _safe_jq_write '
+      .policy = {
+          "levels": {
+              "0": {
+                  "handshake": 3,
+                  "connIdle": 60
+              }
+          },
+          "system": {
+              "statsInboundDownlink": false,
+              "statsInboundUplink": false
+          }
+      }
+    '
+    
+    _toggle_affinity_on
+    
+    local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+    if test -f "$limit_file"; then
+        sed -i '/^Environment="XRAY_RAY_BUFFER_SIZE=/d' "$limit_file" 2>/dev/null || true
+        echo "Environment=\"XRAY_RAY_BUFFER_SIZE=64\"" >> "$limit_file"
+        
+        local TOTAL_MEM
+        TOTAL_MEM=$(free -m 2>/dev/null | awk '/Mem/{print $2}' || echo "1024")
+        local DYNAMIC_GOGC=100
+        
+        if test "$TOTAL_MEM" -ge 1800 2>/dev/null; then 
+            DYNAMIC_GOGC=1000
+        else
+            if test "$TOTAL_MEM" -ge 900 2>/dev/null; then 
+                DYNAMIC_GOGC=500
+            else
+                if test "$TOTAL_MEM" -ge 700 2>/dev/null; then
+                    DYNAMIC_GOGC=400
+                else
+                    if test "$TOTAL_MEM" -ge 500 2>/dev/null; then
+                        DYNAMIC_GOGC=300
+                    else
+                        if test "$TOTAL_MEM" -ge 400 2>/dev/null; then
+                            DYNAMIC_GOGC=200
+                        else
+                            DYNAMIC_GOGC=100
                         fi
                     fi
-                    
-                    if test "$ackfilter_state" = "false"; then toggle_ackfilter; fi
-                    if test "$ecn_state" = "false"; then toggle_ecn; fi
-                    if test "$wash_state" = "false"; then toggle_wash; fi
-                    
-                    info "12-25 项底层物理网络栈参数已达到满血极限状态！"
-                else
-                    if test "$dnsmasq_state" = "true"; then toggle_dnsmasq; fi
-                    if test "$thp_state" = "true"; then toggle_thp; fi
-                    if test "$mtu_state" = "true"; then toggle_mtu; fi
-                    if test "$cpu_state" = "true"; then toggle_cpu; fi
-                    if test "$ring_state" = "true"; then toggle_ring; fi
-                    if test "$zram_state" = "true"; then toggle_zram; fi
-                    if test "$journal_state" = "true"; then toggle_journal; fi
-                    if test "$prio_state" = "true"; then toggle_process_priority; fi
-                    if test "$cake_state" = "true"; then toggle_cake; fi
-                    if test "$irq_state" = "true"; then toggle_irq; fi
-                    
-                    if test "$gso_off_state" = "true"; then
-                        if test "$gso_off_state" != "unsupported"; then 
-                            toggle_gso_off
-                        fi
-                    fi
-                    
-                    if test "$ackfilter_state" = "true"; then toggle_ackfilter; fi
-                    if test "$ecn_state" = "true"; then toggle_ecn; fi
-                    if test "$wash_state" = "true"; then toggle_wash; fi
-                    
-                    info "12-25 系统级配置已被还原到默认模式。"
                 fi
+            fi
+        fi
+        
+        sed -i "s/^Environment=\"GOGC=.*/Environment=\"GOGC=$DYNAMIC_GOGC\"/" "$limit_file" 2>/dev/null || true
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+}
+
+_turn_off_app() {
+    _safe_jq_write '
+      del(.routing.domainMatcher) |
+      (.outbounds[]? | select(.protocol == "freedom")) |= 
+          del(.streamSettings.sockopt.tcpNoDelay, .streamSettings.sockopt.tcpFastOpen, .streamSettings.sockopt.tcpKeepAliveIdle, .streamSettings.sockopt.tcpKeepAliveInterval) |
+      (.inbounds[]? | select(.protocol == "vless" or .protocol == "shadowsocks")) |= (
+          del(.streamSettings.sockopt.tcpNoDelay, .streamSettings.sockopt.tcpFastOpen, .streamSettings.sockopt.tcpKeepAliveIdle, .streamSettings.sockopt.tcpKeepAliveInterval) |
+          .sniffing = (.sniffing // {}) |
+          .sniffing.metadataOnly = false |
+          .sniffing.routeOnly = false
+      )
+    '
+    
+    _safe_jq_write '
+      (.inbounds[]? | select(.protocol == "vless" and .streamSettings.security == "reality")) |= 
+          del(.streamSettings.realitySettings.maxTimeDiff) |
+      del(.dns) |
+      del(.policy)
+    '
+    
+    _toggle_affinity_off
+    
+    local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+    if test -f "$limit_file"; then
+        sed -i '/^Environment="XRAY_RAY_BUFFER_SIZE=/d' "$limit_file" 2>/dev/null || true
+        sed -i "s/^Environment=\"GOGC=.*/Environment=\"GOGC=100\"/" "$limit_file" 2>/dev/null || true
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+}
+
+# ==============================================================================
+# [ 0x0F: 全域 28 项状态调度面板 ]
+# ==============================================================================
+
+do_app_level_tuning_menu() {
+    while true; do
+        clear
+        title "应用层与系统级高级参数调优 (25+3项)"
+        
+        if test ! -f "$CONFIG"; then
+            error "底盘 JSON 缺失，请首先执行基础核心构建！"
+            local _p=""
+            read -rp "按 Enter 退出..." _p || true
+            return
+        fi
+
+        # ==========================================
+        # 瞬时全量状态提取 (应用层 1-11 项，无压缩多行防爆)
+        # ==========================================
+        local out_fastopen
+        out_fastopen=$(jq -r '.outbounds[]? | select(.protocol=="freedom") | .streamSettings?.sockopt?.tcpFastOpen // "false"' "$CONFIG" 2>/dev/null | head -n 1 || echo "false")
+        
+        local out_keepalive
+        out_keepalive=$(jq -r '.outbounds[]? | select(.protocol=="freedom") | .streamSettings?.sockopt?.tcpKeepAliveIdle // "false"' "$CONFIG" 2>/dev/null | head -n 1 || echo "false")
+        
+        local sniff_status
+        sniff_status=$(check_sniff_state 2>/dev/null || echo "false")
+        
+        local dns_status
+        dns_status=$(jq -r '.dns?.queryStrategy // "false"' "$CONFIG" 2>/dev/null | head -n 1 || echo "false")
+        
+        local policy_status
+        policy_status=$(jq -r '.policy?.levels["0"]?.connIdle // "false"' "$CONFIG" 2>/dev/null | head -n 1 || echo "false")
+        
+        local affinity_state
+        affinity_state=$(check_affinity_state 2>/dev/null || echo "false")
+        
+        local mph_state
+        mph_state=$(check_mph_state 2>/dev/null || echo "false")
+        
+        local maxtime_state
+        maxtime_state=$(check_maxtime_state 2>/dev/null || echo "false")
+        
+        local routeonly_status
+        routeonly_status=$(check_routeonly_state 2>/dev/null || echo "false")
+        
+        local buffer_state
+        buffer_state=$(check_buffer_state 2>/dev/null || echo "false")
+        
+        local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+        local gc_status="原始 100 态"
+        
+        if test -f "$limit_file"; then
+            local temp_gc
+            temp_gc=$(awk -F'=' '/^Environment="GOGC=/ {print $3}' "$limit_file" 2>/dev/null | tr -d '"' | head -n 1 || echo "")
+            if test -n "$temp_gc"; then
+                gc_status="$temp_gc"
+            fi
+        fi
+        
+        if test "$gc_status" = "未知"; then
+            gc_status="默认 100"
+        fi
+
+        # ==========================================
+        # 瞬时全量状态提取 (系统层 12-25 项)
+        # ==========================================
+        local dnsmasq_state thp_state mtu_state cpu_state ring_state zram_state journal_state prio_state cake_state irq_state gso_off_state ackfilter_state ecn_state wash_state
+        dnsmasq_state=$(check_dnsmasq_state 2>/dev/null || echo "false")
+        thp_state=$(check_thp_state 2>/dev/null || echo "false")
+        mtu_state=$(check_mtu_state 2>/dev/null || echo "false")
+        cpu_state=$(check_cpu_state 2>/dev/null || echo "false")
+        ring_state=$(check_ring_state 2>/dev/null || echo "false")
+        zram_state=$(check_zram_state 2>/dev/null || echo "false")
+        journal_state=$(check_journal_state 2>/dev/null || echo "false")
+        prio_state=$(check_process_priority_state 2>/dev/null || echo "false")
+        cake_state=$(check_cake_state 2>/dev/null || echo "false")
+        irq_state=$(check_irq_state 2>/dev/null || echo "false")
+        gso_off_state=$(check_gso_off_state 2>/dev/null || echo "false")
+        ackfilter_state=$(check_ackfilter_state 2>/dev/null || echo "false")
+        ecn_state=$(check_ecn_state 2>/dev/null || echo "false")
+        wash_state=$(check_wash_state 2>/dev/null || echo "false")
+
+        # ==========================================
+        # 缺省探测雷达
+        # ==========================================
+        local app_off_count=0
+        if test "$out_fastopen" != "true"; then app_off_count=$((app_off_count + 1)); fi
+        if test "$out_keepalive" != "30"; then app_off_count=$((app_off_count + 1)); fi
+        if test "$sniff_status" != "true"; then app_off_count=$((app_off_count + 1)); fi
+        if test "$dns_status" != "UseIP"; then app_off_count=$((app_off_count + 1)); fi
+        if echo "$gc_status" | grep -q "100" 2>/dev/null; then app_off_count=$((app_off_count + 1)); fi
+        if test "$policy_status" != "60"; then app_off_count=$((app_off_count + 1)); fi
+        if test "$affinity_state" != "true"; then app_off_count=$((app_off_count + 1)); fi
+        if test "$mph_state" != "true"; then app_off_count=$((app_off_count + 1)); fi
+        if test "$routeonly_status" != "true"; then app_off_count=$((app_off_count + 1)); fi
+        if test "$buffer_state" != "true"; then app_off_count=$((app_off_count + 1)); fi
+        
+        local has_reality
+        has_reality=$(jq -r '.inbounds[]? | select(.protocol=="vless" and .streamSettings?.security=="reality") | .protocol' "$CONFIG" 2>/dev/null | head -n 1 || echo "")
+        
+        if test -n "$has_reality"; then
+            if test "$maxtime_state" != "true"; then
+                app_off_count=$((app_off_count + 1))
+            fi
+        fi
+
+        local sys_off_count=0
+        if test "$dnsmasq_state" = "false"; then sys_off_count=$((sys_off_count + 1)); fi
+        if test "$thp_state" = "false"; then sys_off_count=$((sys_off_count + 1)); fi
+        if test "$mtu_state" = "false"; then sys_off_count=$((sys_off_count + 1)); fi
+        if test "$cpu_state" = "false"; then sys_off_count=$((sys_off_count + 1)); fi
+        if test "$ring_state" = "false"; then sys_off_count=$((sys_off_count + 1)); fi
+        if test "$zram_state" = "false"; then sys_off_count=$((sys_off_count + 1)); fi
+        if test "$journal_state" = "false"; then sys_off_count=$((sys_off_count + 1)); fi
+        if test "$prio_state" = "false"; then sys_off_count=$((sys_off_count + 1)); fi
+        if test "$cake_state" = "false"; then sys_off_count=$((sys_off_count + 1)); fi
+        if test "$irq_state" = "false"; then sys_off_count=$((sys_off_count + 1)); fi
+        if test "$gso_off_state" = "false"; then sys_off_count=$((sys_off_count + 1)); fi
+        if test "$ackfilter_state" = "false"; then sys_off_count=$((sys_off_count + 1)); fi
+        if test "$ecn_state" = "false"; then sys_off_count=$((sys_off_count + 1)); fi
+        if test "$wash_state" = "false"; then sys_off_count=$((sys_off_count + 1)); fi
+
+        # ==========================================
+        # 状态着色转换体系 (原教旨多行分离)
+        # ==========================================
+        local s1; if test "$out_fastopen" = "true"; then s1="${cyan}开启${none}"; else s1="${gray}关闭${none}"; fi
+        local s2; if test "$out_keepalive" = "30"; then s2="${cyan}开启 (30s/15s)${none}"; else s2="${gray}系统默认${none}"; fi
+        local s3; if test "$sniff_status" = "true"; then s3="${cyan}精准解负释放 CPU${none}"; else s3="${gray}传统全量嗅探${none}"; fi
+        local s4; if test "$dns_status" = "UseIP"; then s4="${cyan}内置直通拦截${none}"; else s4="${gray}关闭${none}"; fi
+        local s6; if test "$policy_status" = "60"; then s6="${cyan}极速出库 (60s)${none}"; else s6="${gray}系统默认 300s${none}"; fi
+        local s7; if test "$affinity_state" = "true"; then s7="${cyan}进程绑定单核${none}"; else s7="${gray}系统放养调度${none}"; fi
+        local s8; if test "$mph_state" = "true"; then s8="${cyan}MPH 路由预编译${none}"; else s8="${gray}基础线性比对${none}"; fi
+        
+        local s9
+        if test -z "$has_reality"; then 
+            s9="${gray}协议不支持${none}"
+        else 
+            if test "$maxtime_state" = "true"; then s9="${cyan}开启限制 (60s)${none}"; else s9="${gray}未设置拦截墙${none}"; fi
+        fi
+        
+        local s10; if test "$routeonly_status" = "true"; then s10="${cyan}盲走直推已通车${none}"; else s10="${gray}默认全量解析${none}"; fi
+        local s11; if test "$buffer_state" = "true"; then s11="${cyan}64KB 缓冲池分配${none}"; else s11="${gray}系统默认缓存分配${none}"; fi
+        
+        local s12; if test "$dnsmasq_state" = "true"; then s12="${cyan}本地缓存 (0.1ms)${none}"; else s12="${gray}原生解析${none}"; fi
+        local s13; if test "$thp_state" = "true"; then s13="${cyan}透明大页已击碎${none}"; elif test "$thp_state" = "unsupported"; then s13="${gray}缺失组件${none}"; else s13="${gray}系统默认${none}"; fi
+        local s14; if test "$mtu_state" = "true"; then s14="${cyan}MTU 探测开启${none}"; elif test "$mtu_state" = "unsupported"; then s14="${gray}缺失组件${none}"; else s14="${gray}未开启${none}"; fi
+        local s15; if test "$cpu_state" = "true"; then s15="${cyan}Performance 锁死${none}"; elif test "$cpu_state" = "unsupported"; then s15="${gray}调度锁缺失${none}"; else s15="${gray}节能调度${none}"; fi
+        local s16; if test "$ring_state" = "true"; then s16="${cyan}队列已物理紧缩${none}"; elif test "$ring_state" = "unsupported"; then s16="${gray}网卡固件不兼容${none}"; else s16="${gray}系统默认长缓存${none}"; fi
+        local s17; if test "$zram_state" = "true"; then s17="${cyan}内存超压缩生效${none}"; elif test "$zram_state" = "unsupported"; then s17="${gray}缺失 zram 组件${none}"; else s17="${gray}未启用${none}"; fi
+        local s18; if test "$journal_state" = "true"; then s18="${cyan}剥离物理落盘${none}"; elif test "$journal_state" = "unsupported"; then s18="${gray}不受控${none}"; else s18="${gray}狂暴磨损硬盘中${none}"; fi
+        local s19; if test "$prio_state" = "true"; then s19="${cyan}OOM 全域免死金牌${none}"; else s19="${gray}普通权重易被杀${none}"; fi
+        local s20; if test "$cake_state" = "true"; then s20="${cyan}CAKE 高阶调度${none}"; else s20="${gray}系统基础 FQ 排队${none}"; fi
+        local s21; if test "$irq_state" = "true"; then s21="${cyan}硬件多核散列撕裂${none}"; elif test "$irq_state" = "unsupported"; then s21="${gray}单核机器跳过${none}"; else s21="${gray}软中断拥挤堵塞${none}"; fi
+        
+        local s22
+        if test "$gso_off_state" = "true"; then 
+            s22="${cyan}大包粘滞拆解完成${none}"
+        else
+            if test "$gso_off_state" = "unsupported"; then 
+                s22="${gray}固件强制接管${none}"
+            else 
+                s22="${gray}网卡自行黏连${none}"
+            fi
+        fi
+        
+        local s23; if test "$ackfilter_state" = "true"; then s23="${cyan}暴力空包绞杀${none}"; else s23="${gray}未布防空包拦截${none}"; fi
+        local s24; if test "$ecn_state" = "true"; then s24="${cyan}拥塞标记防重传${none}"; else s24="${gray}未布防拥塞标记${none}"; fi
+        local s25; if test "$wash_state" = "true"; then s25="${cyan}特征清洗干扰防线${none}"; else s25="${gray}听天由命盲推${none}"; fi
+
+        # ==========================================
+        # 大屏渲染输出
+        # ==========================================
+        echo -e "  ${magenta}--- Xray Core 应用层内部极客调优 (1-11) ---${none}"
+        echo -e "  1)  开关 -> 双向并发与快速打开提速 (tcpNoDelay)          | 状态: $s1"
+        echo -e "  2)  开关 -> Socket 智能保活与快速死链拔除 (KeepAlive)    | 状态: $s2"
+        echo -e "  3)  开关 -> Xray 全域嗅探引擎减负解放 CPU (metadataOnly) | 状态: $s3"
+        echo -e "  4)  开关 -> 启用自建底层无污染 DNS 分发引擎 (UseIP)      | 状态: $s4"
+        echo -e "  5)  调整 -> 刷新 GOGC 内存池伸缩回收比 (自动侦测)        | 设定: ${cyan}${gc_status}${none}"
+        echo -e "  6)  开关 -> Xray 强行短平快 Policy 优化 (connIdle)       | 状态: $s6"
+        echo -e "  7)  开关 -> 进程物理防飘移绑核技术 (CPUAffinity)         | 状态: $s7"
+        echo -e "  8)  开关 -> 巨型哈希路由表直查跃迁 (MPH)                 | 状态: $s8"
+        echo -e "  9)  开关 -> Reality 深度防御重放装甲 (maxTimeDiff)       | 状态: $s9"
+        echo -e "  10) 开关 -> 零拷贝旁路数据盲转发不查包 (routeOnly)       | 状态: $s10"
+        echo -e "  11) 开关 -> 分配 64K 超大物理重卡调度内存 (BUFFER_SIZE)  | 状态: $s11"
+        echo -e ""
+        echo -e "  ${magenta}--- Linux 系统层与内核底层黑科技操控 (12-25) ---${none}"
+        echo -e "  12) 开关 -> 本地纯内存 Dnsmasq 极速查询池 (锁TTL)        | 状态: $s12"
+        echo -e "  13) 开关 -> 透明大页合并瓦解技术 (THP Defrag)            | 状态: $s13"
+        echo -e "  14) 开关 -> TCP MTU 黑洞路径智能重试嗅探                 | 状态: $s14"
+        echo -e "  15) 开关 -> CPU 频率全局锁死打满 (Performance)           | 状态: $s15"
+        echo -e "  16) 开关 -> 网卡硬件 Ring Buffer 排队环反向收缩          | 状态: $s16"
+        echo -e "  17) 开关 -> 自动划定内存极速压缩交换池 (ZRAM)            | 状态: $s17"
+        echo -e "  18) 开关 -> 斩断 Journald 日志物理硬盘 I/O (转入内存)    | 状态: $s18"
+        echo -e "  19) 开关 -> 给 Xray 打上底层 OOM 免死与高优先金牌        | 状态: $s19"
+        echo -e "  20) 开关 -> CAKE 削峰填谷智能排队调度器 (取代 fq)        | 状态: $s20"
+        echo -e "  21) 开关 -> 网卡多队列 RPS 散列 / 单核 IRQ 硬隔离        | 状态: $s21"
+        echo -e "  22) 开关 -> 网卡 GRO/GSO 大包拆解反转 (降低延迟抖动)     | 状态: $s22"
+        echo -e "  23) 开关 -> CAKE ack-filter 上行空包强行绞杀策略         | 状态: $s23"
+        echo -e "  24) 开关 -> CAKE ECN 队列显式通告 (配合 BBR 实现0丢包)   | 状态: $s24"
+        echo -e "  25) 开关 -> CAKE Wash 报文杂项清理防御干扰               | 状态: $s25"
+        echo -e "  "
+        echo -e "  ${cyan}26) 战神降临：一键极速重置 1-11 项应用层微操${none}"
+        echo -e "  ${yellow}27) 上帝指令：一键智能反转 12-25 项底层硬件微操${none}"
+        echo -e "  ${red}28) 灭世之手：不顾一切全域 25 项全开 (执行后会触发强制重启！)${none}"
+        echo "  0) 逃离控制台"
+        hr
+        
+        local app_opt=""
+        read -rp "请下达数字执行代号: " app_opt || true
+
+        # ==========================================
+        # 控制流处理区上半部 (应用层开关处理)
+        # ==========================================
+        case "${app_opt:-}" in
+            1)
+                if test "$out_fastopen" = "true"; then
+                    _safe_jq_write '
+                      (.outbounds[]? | select(.protocol == "freedom")) |= 
+                          del(.streamSettings.sockopt.tcpNoDelay, .streamSettings.sockopt.tcpFastOpen) |
+                      (.inbounds[]? | select(.protocol == "vless" or .protocol == "shadowsocks")) |= 
+                          del(.streamSettings.sockopt.tcpNoDelay, .streamSettings.sockopt.tcpFastOpen)
+                    '
+                else
+                    _safe_jq_write '
+                      (.outbounds[]? | select(.protocol == "freedom")) |= (
+                          .streamSettings = (.streamSettings // {}) |
+                          .streamSettings.sockopt = (.streamSettings.sockopt // {}) |
+                          .streamSettings.sockopt.tcpNoDelay = true |
+                          .streamSettings.sockopt.tcpFastOpen = true
+                      ) |
+                      (.inbounds[]? | select(.protocol == "vless" or .protocol == "shadowsocks")) |= (
+                          .streamSettings = (.streamSettings // {}) |
+                          .streamSettings.sockopt = (.streamSettings.sockopt // {}) |
+                          .streamSettings.sockopt.tcpNoDelay = true |
+                          .streamSettings.sockopt.tcpFastOpen = true
+                      )
+                    '
+                fi
+                systemctl restart xray >/dev/null 2>&1 || true
+                info "双向提速逻辑改变，已应用。"
                 local _p=""; read -rp "按 Enter 继续..." _p || true
                 ;;
                 
-            28)
-                local total_off
-                total_off=$((app_off_count + sys_off_count))
-                if test "$total_off" -gt 0 2>/dev/null; then
-                    if test "$app_off_count" -gt 0 2>/dev/null; then 
-                        _turn_on_app
+            2)
+                if test "$out_keepalive" = "30"; then
+                    _safe_jq_write '
+                      (.outbounds[]? | select(.protocol == "freedom")) |= 
+                          del(.streamSettings.sockopt.tcpKeepAliveIdle, .streamSettings.sockopt.tcpKeepAliveInterval) |
+                      (.inbounds[]? | select(.protocol == "vless" or .protocol == "shadowsocks")) |= 
+                          del(.streamSettings.sockopt.tcpKeepAliveIdle, .streamSettings.sockopt.tcpKeepAliveInterval)
+                    '
+                else
+                    _safe_jq_write '
+                      (.outbounds[]? | select(.protocol == "freedom")) |= (
+                          .streamSettings = (.streamSettings // {}) |
+                          .streamSettings.sockopt = (.streamSettings.sockopt // {}) |
+                          .streamSettings.sockopt.tcpKeepAliveIdle = 30 |
+                          .streamSettings.sockopt.tcpKeepAliveInterval = 15
+                      ) |
+                      (.inbounds[]? | select(.protocol == "vless" or .protocol == "shadowsocks")) |= (
+                          .streamSettings = (.streamSettings // {}) |
+                          .streamSettings.sockopt = (.streamSettings.sockopt // {}) |
+                          .streamSettings.sockopt.tcpKeepAliveIdle = 30 |
+                          .streamSettings.sockopt.tcpKeepAliveInterval = 15
+                      )
+                    '
+                fi
+                systemctl restart xray >/dev/null 2>&1 || true
+                info "Socket 智能保活系统调整完毕。"
+                local _p=""; read -rp "按 Enter 继续..." _p || true
+                ;;
+                
+            3)
+                if test "$sniff_status" = "true"; then
+                    _safe_jq_write '
+                      (.inbounds[]? | select(.protocol == "vless" or .protocol == "shadowsocks")) |= (
+                          .sniffing = (.sniffing // {}) |
+                          .sniffing.metadataOnly = false
+                      )
+                    '
+                else
+                    _safe_jq_write '
+                      (.inbounds[]? | select(.protocol == "vless" or .protocol == "shadowsocks")) |= (
+                          .sniffing = (.sniffing // {}) |
+                          .sniffing.metadataOnly = true
+                      )
+                    '
+                fi
+                systemctl restart xray >/dev/null 2>&1 || true
+                info "底层分析嗅探引擎减负设置成功。"
+                local _p=""; read -rp "按 Enter 继续..." _p || true
+                ;;
+                
+            4)
+                if test "$dns_status" = "UseIP"; then
+                    _safe_jq_write 'del(.dns)'
+                else
+                    if test "$dnsmasq_state" = "true"; then
+                        _safe_jq_write '
+                          .dns = {
+                              "servers":["127.0.0.1"], 
+                              "queryStrategy":"UseIP"
+                          }
+                        '
+                    else
+                        _safe_jq_write '
+                          .dns = {
+                              "servers":["https://8.8.8.8/dns-query","https://1.1.1.1/dns-query"], 
+                              "queryStrategy":"UseIP"
+                          }
+                        '
                     fi
+                fi
+                systemctl restart xray >/dev/null 2>&1 || true
+                info "内置 DNS 引擎已变更！"
+                local _p=""; read -rp "按 Enter 继续..." _p || true
+                ;;
+                
+            5)
+                local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+                if test -f "$limit_file"; then
+                    local TOTAL_MEM
+                    TOTAL_MEM=$(free -m | awk '/Mem/{print $2}' || echo "1024")
+                    local DYNAMIC_GOGC=100
                     
-                    if test "$sys_off_count" -gt 0 2>/dev/null; then
-                        if test "$dnsmasq_state" = "false"; then toggle_dnsmasq; fi
-                        if test "$thp_state" = "false"; then toggle_thp; fi
-                        if test "$mtu_state" = "false"; then toggle_mtu; fi
-                        if test "$cpu_state" = "false"; then toggle_cpu; fi
-                        if test "$ring_state" = "false"; then toggle_ring; fi
-                        if test "$zram_state" = "false"; then toggle_zram; fi
-                        if test "$journal_state" = "false"; then toggle_journal; fi
-                        if test "$prio_state" = "false"; then toggle_process_priority; fi
-                        if test "$cake_state" = "false"; then toggle_cake; fi
-                        if test "$irq_state" = "false"; then toggle_irq; fi
-                        
-                        if test "$gso_off_state" = "false"; then
-                            if test "$gso_off_state" != "unsupported"; then 
-                                toggle_gso_off
+                    if test "$TOTAL_MEM" -ge 1800 2>/dev/null; then 
+                        DYNAMIC_GOGC=1000
+                    else
+                        if test "$TOTAL_MEM" -ge 900 2>/dev/null; then 
+                            DYNAMIC_GOGC=500
+                        else
+                            if test "$TOTAL_MEM" -ge 700 2>/dev/null; then 
+                                DYNAMIC_GOGC=400
+                            else
+                                if test "$TOTAL_MEM" -ge 500 2>/dev/null; then 
+                                    DYNAMIC_GOGC=300
+                                else
+                                    if test "$TOTAL_MEM" -ge 400 2>/dev/null; then 
+                                        DYNAMIC_GOGC=200
+                                    else
+                                        DYNAMIC_GOGC=100
+                                    fi
+                                fi
                             fi
                         fi
-                        
-                        if test "$ackfilter_state" = "false"; then toggle_ackfilter; fi
-                        if test "$ecn_state" = "false"; then toggle_ecn; fi
-                        if test "$wash_state" = "false"; then toggle_wash; fi
                     fi
-                else
-                    _turn_off_app
                     
-                    if test "$dnsmasq_state" = "true"; then toggle_dnsmasq; fi
-                    if test "$thp_state" = "true"; then toggle_thp; fi
-                    if test "$mtu_state" = "true"; then toggle_mtu; fi
-                    if test "$cpu_state" = "true"; then toggle_cpu; fi
-                    if test "$ring_state" = "true"; then toggle_ring; fi
-                    if test "$zram_state" = "true"; then toggle_zram; fi
-                    if test "$journal_state" = "true"; then toggle_journal; fi
-                    if test "$prio_state" = "true"; then toggle_process_priority; fi
-                    if test "$cake_state" = "true"; then toggle_cake; fi
-                    if test "$irq_state" = "true"; then toggle_irq; fi
-                    
-                    if test "$gso_off_state" = "true"; then
-                        if test "$gso_off_state" != "unsupported"; then 
-                            toggle_gso_off
+                    if grep -q "Environment=\"GOGC=" "$limit_file" 2>/dev/null; then
+                        if echo "$gc_status" | grep -q "100" 2>/dev/null; then
+                            sed -i "s/^Environment=\"GOGC=.*/Environment=\"GOGC=$DYNAMIC_GOGC\"/" "$limit_file" 2>/dev/null || true
+                        else
+                            sed -i "s/^Environment=\"GOGC=.*/Environment=\"GOGC=100\"/" "$limit_file" 2>/dev/null || true
                         fi
+                    else
+                        echo "Environment=\"GOGC=$DYNAMIC_GOGC\"" >> "$limit_file"
                     fi
                     
-                    if test "$ackfilter_state" = "true"; then toggle_ackfilter; fi
-                    if test "$ecn_state" = "true"; then toggle_ecn; fi
-                    if test "$wash_state" = "true"; then toggle_wash; fi
+                    systemctl daemon-reload >/dev/null 2>&1 || true
+                    systemctl restart xray >/dev/null 2>&1 || true
+                    info "GOGC 动态阶梯调优完成！"
                 fi
-                
-                echo ""
-                print_red "=========================================================================="
-                print_yellow "绝对权限指令已生效：内核拓扑与并发结构树发生大规模物理性撕裂！"
-                print_yellow "这台战车将在 6 秒倒数结束后执行最深度的物理强行重启以确保挂载万无一失！"
-                print_red "=========================================================================="
-                echo ""
-                
-                for i in {6..1}; do 
-                    echo -ne "\r  强行拔核倒数死线: ${cyan}${i}${none} 秒... "
-                    sleep 1
-                done
-                
-                echo -e "\n\n  强压 Sync 落盘，内存锁解除..."
-                sync
-                echo -e "  所有网络已切断，服务器正在执行涅槃重启..."
-                reboot
+                local _p=""; read -rp "按 Enter 继续..." _p || true
                 ;;
                 
-            0)
-                return
+            6)
+                if test "$policy_status" = "60"; then
+                    _safe_jq_write 'del(.policy)'
+                else
+                    _safe_jq_write '
+                      .policy = {
+                          "levels": {
+                              "0": {
+                                  "handshake":3,
+                                  "connIdle":60
+                              }
+                          },
+                          "system": {
+                              "statsInboundDownlink":false,
+                              "statsInboundUplink":false
+                          }
+                      }
+                    '
+                fi
+                systemctl restart xray >/dev/null 2>&1 || true
+                info "回收策略调配完成！"
+                local _p=""; read -rp "按 Enter 继续..." _p || true
                 ;;
-        esac
-    done
-}
+                
+            7)
+                if test "$affinity_state" = "true"; then
+                    _toggle_affinity_off
+                else
+                    _toggle_affinity_on
+                fi
+                systemctl restart xray >/dev/null 2>&1 || true
+                info "核心独占隔离操作成功！"
+                local _p=""; read -rp "按 Enter 继续..." _p || true
+                ;;
+                
+            8)
+                if test "$mph_state" = "true"; then
+                    _safe_jq_write 'del(.routing.domainMatcher)'
+                else
+                    _safe_jq_write '
+                      .routing = (.routing // {}) | 
+                      .routing.domainMatcher = "mph"
+                    '
+                fi
+                systemctl restart xray >/dev/null 2>&1 || true
+                info "路由层级 MPH 挂载完毕！"
+                local _p=""; read -rp "按 Enter 继续..." _p || true
+                ;;
+                
+            9)
+                if test -n "$has_reality"; then
+                    if test "$maxtime_state" = "true"; then
+                        _safe_jq_write '
+                          (.inbounds[]? | select(.protocol == "vless" and .streamSettings.security == "reality")) |= (
+                              .streamSettings.realitySettings = (.streamSettings.realitySettings // {}) |
+                              del(.streamSettings.realitySettings.maxTimeDiff)
+                          )
+                        '
+                    else
+                        _safe_jq_write '
+                          (.inbounds[]? | select(.protocol == "vless" and .streamSettings.security == "reality")) |= (
+                              .streamSettings.realitySettings = (.streamSettings.realitySettings // {}) |
+                              .streamSettings.realitySettings.maxTimeDiff = 60000
+                          )
+                        '
+                    fi
+                    systemctl restart xray >/dev/null 2>&1 || true
+                    info "重放时间戳装甲部署完毕！"
+                else
+                    warn "您的系统中不存在有效的 Reality，跳过强加拦截令。"
+                fi
+                local _p=""; read -rp "按 Enter 继续..." _p || true
+                ;;
+                
+            10)
+                if test "$routeonly_status" = "true"; then
+                    _safe_jq_write '
+                      (.inbounds[]? | select(.protocol == "vless" or .protocol == "shadowsocks")) |= (
+                          .sniffing = (.sniffing // {}) |
+                          .sniffing.routeOnly = false
+                      )
+                    '
+                else
+                    _safe_jq_write '
+                      (.inbounds[]? | select(.protocol == "vless" or .protocol == "shadowsocks")) |= (
+                          .sniffing = (.sniffing // {}) |
+                          .sniffing.routeOnly = true
+                      )
+                    '
+                fi
+                systemctl restart xray >/dev/null 2>&1 || true
+                info "内核底层直通盲走特快通道交替。"
+                local _p=""; read -rp "按 Enter 继续..." _p || true
+                ;;
+                
+            11)
+                toggle_buffer
+                systemctl restart xray >/dev/null 2>&1 || true
+                info "物理巨型缓存池调整已结束！"
+                local _p=""; read -rp "按 Enter 继续..." _p || true
+                ;;
 
 # ==============================================================================
 # [ 0x10: Reality 回落黑洞限速探针 ]
