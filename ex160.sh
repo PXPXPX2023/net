@@ -691,88 +691,30 @@ _select_ss_method() {
 # 17. 官方内核快速部署 (XANMOD)
 # ==========================================
 do_install_xanmod_main_official() {
-    title "系统层：注入官方预编译版 XANMOD"
-
-    # 架构检查
-    if [[ "$(uname -m)" != "x86_64" ]]; then
-        error "仅支持 x86_64 架构！"
-        return 1
-    fi
-
-    export DEBIAN_FRONTEND=noninteractive
-
-    # 基础依赖
-    apt-get update -y >/dev/null 2>&1
-    apt-get install -y curl wget gnupg ca-certificates >/dev/null 2>&1
-
-    # ===== CPU 指令集检测（修复版）=====
-    local cpu_level_script="/tmp/check_x86-64_psabi.awk"
+    title "系统飞升：安装官方预编译 XANMOD (main) 内核"
+    if [ "$(uname -m)" != "x86_64" ]; then error "官方预编译 Xanmod 仅支持 x86_64 架构！"; read -rp "按 Enter..." _; return; fi
+    if [ ! -f /etc/debian_version ]; then error "官方预编译 Xanmod APT 源目前仅支持 Debian / Ubuntu 系！"; read -rp "按 Enter..." _; return; fi
+    print_magenta ">>> [1/4] 正在拉取智能探针..."
+    local cpu_level_script="/tmp/check_x86-64_psabi.sh"
     wget -qO "$cpu_level_script" https://dl.xanmod.org/check_x86-64_psabi.sh
-
-    local cpu_level
-    cpu_level=$(awk -f "$cpu_level_script" 2>/dev/null \
-        | grep -oE 'x86-64-v[1-4]' \
-        | grep -oE '[1-4]' \
-        | tail -n1)
-
+    local cpu_level=$(awk -f "$cpu_level_script" | grep -oE 'x86-64-v[1-4]' | grep -oE '[1-4]' | tail -n 1)
     rm -f "$cpu_level_script"
-
-    # fallback 默认
-    [[ -z "$cpu_level" ]] && cpu_level=2
-
-    info "检测 CPU 等级: x86-64-v${cpu_level}"
-
-    # ===== 添加仓库（新版写法）=====
-    mkdir -p /usr/share/keyrings
-
-    curl -fsSL https://dl.xanmod.org/gpg.key \
-        | gpg --dearmor -o /usr/share/keyrings/xanmod.gpg
-
-    echo "deb [signed-by=/usr/share/keyrings/xanmod.gpg] http://deb.xanmod.org releases main" \
-        > /etc/apt/sources.list.d/xanmod-kernel.list
-
+    if [ -z "$cpu_level" ]; then cpu_level=1; warn "默认降级使用 v1 版本。"; else info "支持级别: v${cpu_level}"; fi
+    local pkg_name="linux-xanmod-x64v${cpu_level}"
+    print_magenta ">>> [2/4] 配置 Xanmod 仓库..."
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -y >/dev/null 2>&1
+    apt-get install -y gnupg gnupg2 curl sudo wget e2fsprogs >/dev/null 2>&1
+    echo 'deb http://deb.xanmod.org releases main' > /etc/apt/sources.list.d/xanmod-kernel.list
+    wget -qO - https://dl.xanmod.org/gpg.key | gpg --dearmor --yes -o /etc/apt/trusted.gpg.d/xanmod-kernel.gpg
+    print_magenta ">>> [3/4] 极速拉取并安装: $pkg_name ..."
     apt-get update -y
-
-    # ===== 自动降级安装 =====
-    local levels=(4 3 2 1)
-    local installed=0
-
-    for lvl in "${levels[@]}"; do
-        if (( lvl <= cpu_level )); then
-            local pkg="linux-xanmod-x64v${lvl}"
-            info "尝试安装: $pkg"
-
-            if apt-get install -y "$pkg"; then
-                info "成功安装: $pkg"
-                installed=1
-                break
-            else
-                warn "安装失败: $pkg，尝试降级..."
-            fi
-        fi
-    done
-
-    if [[ "$installed" -ne 1 ]]; then
-        error "所有版本安装失败！"
-        return 1
-    fi
-
-    # ===== 更新 grub =====
-    if command -v update-grub >/dev/null 2>&1; then
-        update-grub
-    else
-        apt-get install -y grub2-common
-        update-grub
-    fi
-
-    # ===== 验证内核 =====
-    info "当前内核: $(uname -r)"
-    warn "重启后生效新内核"
-
-    # ===== 自动重启 =====
-    info "10 秒后自动重启..."
-    sleep 10
-    reboot
+    apt-get install -y "$pkg_name"
+    if [ $? -ne 0 ] && [ "$cpu_level" == "4" ]; then pkg_name="linux-xanmod-x64v3"; apt-get install -y "$pkg_name"; fi
+    print_magenta ">>> [4/4] 重载 GRUB ..."
+    if command -v update-grub >/dev/null 2>&1; then update-grub; else apt-get install -y grub2-common; update-grub; fi
+    info "官方预编译 XANMOD (main) 部署已全部就绪！系统将在 10 秒后自动重启应用新内核..."
+    sleep 10; reboot
 }
 
 # ==========================================
