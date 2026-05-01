@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# 脚本名称: ex161.sh (The Apex Vanguard - Project Genesis V160 [Absolute Horizon])
+# 脚本名称: ex161.sh (The Apex Vanguard - Project Genesis V161 [Absolute Horizon])
 # 快捷方式: xrv
 # ==============================================================================
 # 终极溯源重铸宣言 (去冗余废话、真·全量展开版): 
@@ -131,7 +131,7 @@ fix_permissions() {
     chown -R root:root "$CONFIG_DIR" >/dev/null 2>&1 || true
 }
 
-# V160 绝杀修复：必须接收 "$@" 全部参数，防止 --arg 变量被丢弃！
+# V161 绝杀修复：必须接收 "$@" 全部参数，防止 --arg 变量被丢弃！
 _safe_jq_write() {
     local tmp=$(mktemp)
     if jq "$@" "$CONFIG" > "$tmp" 2>/dev/null; then
@@ -3213,7 +3213,7 @@ EOF
                 local target_uuid=$(awk -F'|' -v id="${dnum:-0}" '$1==id {print $2}' "$tmp_users")
                 if test -n "$target_uuid"; then
                     local idx=$((${dnum:-0}-1))
-                    # V160 绝杀修复：无损传参支持，绝不丢失 $target_uuid 和 $idx
+                    # V161 绝杀修复：无损传参支持，绝不丢失 $target_uuid 和 $idx
                     _safe_jq_write --arg uid "$target_uuid" --argjson i "$idx" '
                         .inbounds = [
                             .inbounds[]? | if (.protocol == "vless") then
@@ -3788,7 +3788,7 @@ main_menu() {
     while true; do
         clear
         echo -e "${blue}======================================================================${none}"
-        echo -e "  ${magenta}Xray ex161 The Apex Vanguard - Project Genesis V160 (创世真核版)${none}"
+        echo -e "  ${magenta}Xray ex161 The Apex Vanguard - Project Genesis V161 (创世真核版)${none}"
         
         local svc=$(systemctl is-active xray 2>/dev/null || echo "inactive")
         if test "$svc" = "active"; then 
@@ -3897,5 +3897,5 @@ main_menu() {
 preflight
 main_menu
 # ==============================================================================
-# EOF: 代码末尾标记，本行存在即代表 V160 真核版全量下发，未遭 Token 截断
+# EOF: 代码末尾标记，本行存在即代表 V161 真核版全量下发，未遭 Token 截断
 # ==============================================================================
