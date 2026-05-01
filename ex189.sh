@@ -601,27 +601,15 @@ log() {
 dl() {
     local target_url="$1" 
     local out="$2"
-    local success=0
     
-    # 构建多轨穿墙免翻反代阵列，专门克制国内机器连接 GitHub 时的深度物理断层
-    for proxy in "https://ghfast.top/" "https://ghp.ci/" "https://ghproxy.net/" "https://mirror.ghproxy.com/" ""; do
-        local url="${proxy}${target_url}"
-        
-        if curl -kfsSL --connect-timeout 10 --max-time 180 -o "$out.tmp" "$url"; then
-            mv -f "$out.tmp" "$out"
-            log "[INFO] 成功重载云端规则库: $url"
-            success=1
-            break
-        fi
-        log "[WARN] 节点流失，穿透失败，准备自旋重试下一条链路: $url"
-        sleep 3
-    done
-    
-    if test "$success" -eq 0; then
-        log "[ERROR] 规则库下载遭遇严重网络阻断，穿墙矩阵全量失效: $target_url"
-        return 1
+    if curl -kfsSL --connect-timeout 10 --max-time 180 -o "$out.tmp" "$target_url"; then
+        mv -f "$out.tmp" "$out"
+        log "[INFO] 成功重载云端规则库: $target_url"
+        return 0
     fi
-    return 0
+    
+    log "[ERROR] 规则库下载遭遇严重网络阻断: $target_url"
+    return 1
 }
 
 dl "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geoip.dat" "$XRAY_DAT_DIR/geoip.dat"
@@ -1320,36 +1308,288 @@ gen_x25519() {
 # [ 0x10: 核心防线：多轨 CDN 镜像升级与下载熔断系统 (极致穿墙防爆版) ]
 # ------------------------------------------------------------------------------
 
+# ------------------------------------------------------------------------------
+# [ 核心安装与热更模块 (海外原生直连极速版) ]
+# ------------------------------------------------------------------------------
+
 do_update_core() {
-    title "更新 Xray 核心 (无缝拉取最新版重启)"
-    print_magenta ">>> 正在全域连接云端，多轨拉取最新版 Xray 核心引擎..."
+    title "更新 Xray 核心 (原生直连极速版)"
+    print_magenta ">>> 正在通过 Github 官方主干道拉取最新版 Xray 核心引擎..."
     
-    local xray_updated=0
-    
-    # 构建四位一体的强力反代 CDN 矩阵，专治极度恶劣的网络阻断
-    for proxy_prefix in "https://ghfast.top/" "https://ghproxy.net/" "https://mirror.ghproxy.com/" "https://ghp.ci/" ""; do
-        local inst_url="${proxy_prefix}https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh"
-        
-        # 增加 -k 参数无视部分极度恶劣环境下的根证书 MITM 劫持
-        if curl -kfsSL --connect-timeout 10 --max-time 60 -o /tmp/install-release.sh "$inst_url" 2>/dev/null; then
+    # 剥离所有累赘的反代，恢复最纯粹的官方直连热更
+    if bash -c "$(curl -L -s https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh)" @ install >/dev/null 2>&1; then
+        if test -x "$XRAY_BIN"; then
+            fix_xray_systemd_limits
+            systemctl restart xray >/dev/null 2>&1 || true
             
-            # 【核心黑科技】：强行注入 PROXY 环境变量！
-            # 让官方安装脚本在内部拉取 .zip 核心包时，也强制走反向代理，杜绝连环阻断！
-            export PROXY="$proxy_prefix"
+            local cur_ver
+            cur_ver=$("$XRAY_BIN" version 2>/dev/null | head -n 1 | awk '{print $2}' || echo "读取异常")
+            info "热更指令执行完毕！当前系统运行的核心版本: ${cyan}$cur_ver${none}"
             
-            if bash /tmp/install-release.sh @ install >/dev/null 2>&1; then
-                if test -x "$XRAY_BIN"; then
-                    xray_updated=1
-                    info "Xray 核心跨维升级成功，当前数据流桥接源：${proxy_prefix:-直连}"
-                    unset PROXY
-                    break
-                fi
-            fi
-            unset PROXY
+            local _pause=""
+            read -rp "按 Enter 键知悉并返回主菜单..." _pause || true
+            return 0
         fi
+    fi
+    
+    error "核心升级遭遇异常！官方脚本执行失败，请检查机器的 DNS 或 IPv6 连通性。"
+    local _pause=""
+    read -rp "按 Enter 键返回..." _pause || true
+    return 1
+}
+
+do_install() {
+    title "Apex Vanguard Ultimate Final: 引擎核心深层部署中心"
+    preflight
+    
+    systemctl stop xray >/dev/null 2>&1 || true
+    
+    if test ! -f "$INSTALL_DATE_FILE"; then 
+        date +"%Y-%m-%d %H:%M:%S" > "$INSTALL_DATE_FILE"
+    fi
+    
+    echo -e "  ${cyan}请选择本次即将打入服务器灵魂的网络数据协议链：${none}"
+    echo "  1) VLESS-Reality (最新一代加密算法，极低特征流量伪装，高防被墙)"
+    echo "  2) Shadowsocks (极度轻量级，专为落后设备环境设计的备用直连通道)"
+    echo "  3) 两个我都全都要 (双重体系叠加交火)"
+    
+    local proto_choice=""
+    read -rp "  请告诉系统你的选择: " proto_choice || true
+    proto_choice=${proto_choice:-1}
+
+    if test "$proto_choice" = "1" || test "$proto_choice" = "3"; then
+        while true; do 
+            local input_p=""
+            read -rp "请为您强大的 VLESS 主通道分配一个监听端口 (直接回车默认 443): " input_p || true
+            input_p=${input_p:-443}
+            if validate_port "$input_p"; then 
+                LISTEN_PORT="$input_p"
+                break
+            fi
+        done
         
-        warn "节点流失，通讯链路 ${proxy_prefix:-直连} 遭阻断，正在自动自旋接入备用穿墙镜像..."
+        local input_remark=""
+        read -rp "请为您的主帅通道命名一个响亮的节点代号 (默认 xp-reality): " input_remark || true
+        REMARK_NAME=${input_remark:-xp-reality}
+        
+        choose_sni
+        if test $? -ne 0; then 
+            return 1
+        fi
+    fi
+
+    local ss_port=8388
+    local ss_pass=""
+    local ss_method="aes-256-gcm"
+    
+    if test "$proto_choice" = "2" || test "$proto_choice" = "3"; then
+        while true; do 
+            local input_s=""
+            read -rp "请为辅助的 SS 弱通道设定安全端口 (直接回车默认 8388): " input_s || true
+            input_s=${input_s:-8388}
+            if validate_port "$input_s"; then 
+                ss_port="$input_s"
+                break
+            fi
+        done
+        
+        ss_pass=$(gen_ss_pass)
+        ss_method=$(_select_ss_method)
+        
+        if test "$proto_choice" = "2"; then 
+            local input_remark=""
+            read -rp "请为您的节点命名一个响亮的代号 (默认 xp-reality): " input_remark || true
+            REMARK_NAME=${input_remark:-xp-reality}
+        fi
+    fi
+
+    print_magenta ">>> 正在连接 Github 官方主干道，拉取最新版 Xray 核心引擎..."
+    
+    # 彻底抛弃国内反代矩阵，采用最纯正的海外直连
+    bash -c "$(curl -L -s https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh)" @ install >/dev/null 2>&1 || true
+    
+    if test ! -x "$XRAY_BIN"; then
+        die "核心拉取全线溃败！官方直连通道受阻，请检查服务器的基础网络配置 (如 DNS 或 IPv6 优先问题)！"
+    fi
+    
+    info "Xray 核心底层部署成功！桥接源：Github 原生直连"
+    
+    install_update_dat
+    fix_xray_systemd_limits
+
+    # 1. 纯净构建底层骨架配置
+    cat > "$CONFIG" <<EOF
+{
+  "log": {
+      "loglevel": "warning"
+  },
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+          "outboundTag": "block", 
+          "_enabled": true, 
+          "protocol": ["bittorrent"]
+      },
+      {
+          "outboundTag": "block", 
+          "_enabled": true, 
+          "ip": ["geoip:cn"]
+      },
+      {
+          "outboundTag": "block", 
+          "_enabled": true, 
+          "domain": ["geosite:cn", "geosite:category-ads-all"]
+      }
+    ]
+  },
+  "inbounds": [],
+  "outbounds": [
+      {
+          "protocol": "freedom", 
+          "tag": "direct", 
+          "settings": {
+              "domainStrategy": "AsIs"
+          },
+          "streamSettings": {
+              "sockopt": {
+                  "tcpNoDelay": true,
+                  "tcpFastOpen": true
+              }
+          }
+      }, 
+      {
+          "protocol": "blackhole", 
+          "tag": "block"
+      }
+  ]
+}
+EOF
+
+    # 2. 注入 VLESS 面板
+    if test "$proto_choice" = "1" || test "$proto_choice" = "3"; then
+        gen_x25519
+        local uuid
+        uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || "$XRAY_BIN" uuid)
+        
+        local sid
+        sid=$(head -c 8 /dev/urandom | xxd -p | tr -d '\n' || echo "")
+        
+        local ctime
+        ctime=$(date +"%Y-%m-%d %H:%M")
+        
+        echo "$X25519_PUB" > "$PUBKEY_FILE"
+        echo "$uuid|$ctime" > "$USER_TIME_MAP"
+        
+        echo "[$SNI_JSON_ARRAY]" > /tmp/sni_array.json
+        cat > /tmp/vless_inbound.json <<EOF
+{
+  "tag": "vless-reality", 
+  "listen": "0.0.0.0", 
+  "port": $LISTEN_PORT, 
+  "protocol": "vless",
+  "settings": {
+      "clients": [
+          {
+              "id": "$uuid", 
+              "flow": "xtls-rprx-vision", 
+              "email": "$REMARK_NAME"
+          }
+      ], 
+      "decryption": "none"
+  },
+  "streamSettings": {
+    "network": "tcp", 
+    "security": "reality",
+    "sockopt": {
+        "tcpNoDelay": true, 
+        "tcpFastOpen": true
+    },
+    "realitySettings": {
+        "dest": "$BEST_SNI:443", 
+        "serverNames": [], 
+        "privateKey": "$X25519_PRIV", 
+        "publicKey": "$X25519_PUB", 
+        "shortIds": ["$sid"],
+        "limitFallbackUpload": {
+            "afterBytes": 0,
+            "bytesPerSec": 0,
+            "burstBytesPerSec": 0
+        },
+        "limitFallbackDownload": {
+            "afterBytes": 0,
+            "bytesPerSec": 0,
+            "burstBytesPerSec": 0
+        }
+    }
+  },
+  "sniffing": {
+      "enabled": true, 
+      "destOverride": ["http", "tls", "quic"]
+  }
+}
+EOF
+        _safe_jq_write --slurpfile snis /tmp/sni_array.json --slurpfile vless_tmp /tmp/vless_inbound.json '
+            .inbounds += [ $vless_tmp[0] | .streamSettings.realitySettings.serverNames = $snis[0] ]
+        '
+        rm -f /tmp/vless_inbound.json /tmp/sni_array.json 2>/dev/null || true
+    fi
+
+    # 3. 注入 SS 面板
+    if test "$proto_choice" = "2" || test "$proto_choice" = "3"; then
+        cat > /tmp/ss_inbound.json <<EOF
+{
+  "tag": "shadowsocks", 
+  "listen": "0.0.0.0", 
+  "port": $ss_port, 
+  "protocol": "shadowsocks",
+  "settings": {
+      "method": "$ss_method", 
+      "password": "$ss_pass", 
+      "network": "tcp,udp"
+  },
+  "streamSettings": {
+      "sockopt": {
+          "tcpNoDelay": true, 
+          "tcpFastOpen": true
+      }
+  }
+}
+EOF
+        _safe_jq_write --slurpfile ss_tmp /tmp/ss_inbound.json '
+            .inbounds += [ $ss_tmp[0] ]
+        '
+        rm -f /tmp/ss_inbound.json 2>/dev/null || true
+    fi
+
+    fix_permissions
+    systemctl enable xray >/dev/null 2>&1 || true
+    
+    if ensure_xray_is_alive; then
+        info "老哥，全网底层链路及数据加密防护架构全部搭建完毕！"
+        do_summary
+    else
+        error "系统配置加载失败，请查阅错误日志。"
+        return 1
+    fi
+    
+    while true; do
+        local opt=""
+        read -rp "按 Enter 稳步返回主控大屏，或强行输入 b 重新排布底层矩阵结构: " opt || true
+        
+        if test "$opt" = "b" || test "$opt" = "B"; then
+            choose_sni
+            if test $? -eq 0; then 
+                _update_matrix
+                do_summary
+            else 
+                break
+            fi
+        else 
+            break
+        fi
     done
+}
     
     # 扫尾清理临时脚本，撤销代理环境变量防止污染全局
     rm -f /tmp/install-release.sh 2>/dev/null || true
