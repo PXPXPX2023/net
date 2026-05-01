@@ -1208,7 +1208,7 @@ derive_pubkey() {
 }
 
 # ------------------------------------------------------------------------------
-# [ 0x10: 核心防线：多轨 CDN 镜像升级与下载熔断系统 (完全抗注入防爆版) ]
+# [ 0x10: 核心防线：多轨 CDN 镜像升级与下载熔断系统 (极致穿墙防爆版) ]
 # ------------------------------------------------------------------------------
 
 do_update_core() {
@@ -1217,13 +1217,19 @@ do_update_core() {
     
     local xray_updated=0
     
-    # 构建三位一体的 CDN 下载矩阵，对抗国内复杂的 DNS 污染和 TCP RST 阻断
-    for url in "https://github.com/XTLS/Xray-install/raw/main/install-release.sh" \
-               "https://fastly.jsdelivr.net/gh/XTLS/Xray-install@main/install-release.sh" \
-               "https://raw.fastgit.org/XTLS/Xray-install/main/install-release.sh"; do
+    # 构建四位一体的强力反代 CDN 矩阵，专治极度恶劣的网络阻断
+    for url in "https://ghp.ci/https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh" \
+               "https://ghproxy.net/https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh" \
+               "https://cdn.jsdelivr.net/gh/XTLS/Xray-install@main/install-release.sh" \
+               "https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh"; do
                
-        # [F3] 核心修复：直接下载到临时文件后执行，防止 curl 输出嵌套 $() 导致代码在内存中被错误转义而截断毁坏
-        if curl -fsSL --connect-timeout 10 --max-time 60 -o /tmp/install-release.sh "$url" 2>/dev/null; then
+        # 增加 -k 参数无视部分极度恶劣环境下的根证书 MITM 劫持
+        if curl -kfsSL --connect-timeout 10 --max-time 60 -o /tmp/install-release.sh "$url" 2>/dev/null; then
+            
+            # 【核心黑科技】：强行注入 PROXY 环境变量！
+            # 让官方安装脚本在内部拉取 .zip 核心包时，也强制走反向代理，杜绝连环阻断！
+            export PROXY="https://ghp.ci/"
+            
             if bash /tmp/install-release.sh @ install >/dev/null 2>&1; then
                 xray_updated=1
                 info "Xray 核心跨维升级成功，当前数据流桥接源：$url"
@@ -1231,17 +1237,18 @@ do_update_core() {
             fi
         fi
         
-        warn "节点流失，通讯链路 [$url] 遭阻断，正在自动自旋接入备用 CDN 镜像..."
+        warn "节点流失，通讯链路遭阻断，正在自动自旋接入备用穿墙镜像..."
     done
     
-    # 扫尾清理临时脚本
+    # 扫尾清理临时脚本，撤销代理环境变量防止污染全局
     rm -f /tmp/install-release.sh 2>/dev/null || true
+    unset PROXY
     
     # 绝对熔断层，防止下载了残缺文件还去重启服务
     if test "$xray_updated" -eq 0; then
-        error "多轨 CDN 升级指令悉数落空，核心下载网络遭遇深空级阻断！"
+        error "多轨 CDN 升级指令悉数落空，核心下载网络遭遇深空级物理阻断！"
         local _pause=""
-        read -rp "请排查网络连通性，按 Enter 放弃控制权限并退回主控中枢..." _pause || true
+        read -rp "请检查该机器是否彻底无法连接海外网络，按 Enter 返回..." _pause || true
         return 1
     fi
     
