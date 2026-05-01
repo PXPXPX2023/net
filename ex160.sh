@@ -690,170 +690,187 @@ _select_ss_method() {
 # ==========================================
 # 17. 官方内核快速部署 (XANMOD)
 # ==========================================
+do_install_xanmod_main_official() {
+    title "系统层：注入官方预编译版 XANMOD"
 
-do_xanmod_compile() {
-    title "系统飞升：编译安装 Xanmod + BBR3"
-    warn "警告: 这是一个极其漫长的过程 (30-60分钟)，低配机极易引发死机断连！强烈建议优先使用菜单 2 的官方预编译版。"
-    read -rp "确定要执意开始源码编译吗？(y/n): " confirm
-    if [[ "$confirm" != "y" ]]; then return; fi
+    # 架构检查
+    if [[ "$(uname -m)" != "x86_64" ]]; then
+        error "仅支持 x86_64 架构！"
+        return 1
+    fi
 
-    echo "=== 开始执行深度系统清理与模块解容 ==="
     export DEBIAN_FRONTEND=noninteractive
-    apt-get clean
-    apt-get autoremove -y --purge || true
-    
-    journalctl --vacuum-time=1d || true
-    rm -rf /var/log/*.log /var/log/*/*.log /tmp/* /var/lib/docker/* /usr/src/linux* /usr/src/bbr* /usr/src/xanmod* /compile/* /root/linux* /root/*.tar* /root/*.xz 2>/dev/null || true
-    sync
 
-    local inode_use=$(df -i / | awk 'NR==2{print $5}' | tr -d '%')
-    if [ "$inode_use" -gt 90 ]; then
-        apt clean
-        rm -rf /var/cache/*
-    fi
+    # 基础依赖
+    apt-get update -y >/dev/null 2>&1
+    apt-get install -y curl wget gnupg ca-certificates >/dev/null 2>&1
 
-    echo "=== 注入定期清理任务 ==="
-    cat <<'EOF' > /usr/local/bin/cc1.sh
-#!/bin/bash
-apt-get clean
-apt-get autoremove -y --purge
-journalctl --vacuum-time=3d
-rm -rf /tmp/*
-rm -rf /var/log/*
-sync
-EOF
-    chmod +x /usr/local/bin/cc1.sh
-    (crontab -l 2>/dev/null | grep -v cc1.sh ; echo "0 4 */10 * * /usr/local/bin/cc1.sh") | crontab -
+    # ===== CPU 指令集检测（修复版）=====
+    local cpu_level_script="/tmp/check_x86-64_psabi.awk"
+    wget -qO "$cpu_level_script" https://dl.xanmod.org/check_x86-64_psabi.sh
 
-    echo "=== 检查并配置 1GB 编译缓冲交换区 (Swap) ==="
-    if ! swapon --show | grep -q swapfile; then
-        if ! fallocate -l 1024M /swapfile 2>/dev/null; then
-            dd if=/dev/zero of=/swapfile bs=1M count=1024 status=progress
-        fi
-        chmod 600 /swapfile
-        mkswap /swapfile
-        swapon /swapfile
-        grep -q swapfile /etc/fstab || echo "/swapfile none swap sw 0 0" >> /etc/fstab
-    fi
+    local cpu_level
+    cpu_level=$(awk -f "$cpu_level_script" 2>/dev/null \
+        | grep -oE 'x86-64-v[1-4]' \
+        | grep -oE '[1-4]' \
+        | tail -n1)
 
-    local root_free=$(df -m / | awk 'NR==2{print $4}')
-    local BUILD_DIR=""
-    if [ "$root_free" -gt 4000 ]; then mkdir -p /compile; BUILD_DIR=/compile; else BUILD_DIR=/usr/src; fi
+    rm -f "$cpu_level_script"
+
+    # fallback 默认
+    [[ -z "$cpu_level" ]] && cpu_level=2
+
+    info "检测 CPU 等级: x86-64-v${cpu_level}"
+
+    # ===== 添加仓库（新版写法）=====
+    mkdir -p /usr/share/keyrings
+
+    curl -fsSL https://dl.xanmod.org/gpg.key \
+        | gpg --dearmor -o /usr/share/keyrings/xanmod.gpg
+
+    echo "deb [signed-by=/usr/share/keyrings/xanmod.gpg] http://deb.xanmod.org releases main" \
+        > /etc/apt/sources.list.d/xanmod-kernel.list
 
     apt-get update -y
+
+    # ===== 自动降级安装 =====
+    local levels=(4 3 2 1)
+    local installed=0
+
+    for lvl in "${levels[@]}"; do
+        if (( lvl <= cpu_level )); then
+            local pkg="linux-xanmod-x64v${lvl}"
+            info "尝试安装: $pkg"
+
+            if apt-get install -y "$pkg"; then
+                info "成功安装: $pkg"
+                installed=1
+                break
+            else
+                warn "安装失败: $pkg，尝试降级..."
+            fi
+        fi
+    done
+
+    if [[ "$installed" -ne 1 ]]; then
+        error "所有版本安装失败！"
+        return 1
+    fi
+
+    # ===== 更新 grub =====
+    if command -v update-grub >/dev/null 2>&1; then
+        update-grub
+    else
+        apt-get install -y grub2-common
+        update-grub
+    fi
+
+    # ===== 验证内核 =====
+    info "当前内核: $(uname -r)"
+    warn "重启后生效新内核"
+
+    # ===== 自动重启 =====
+    info "10 秒后自动重启..."
+    sleep 10
+    reboot
+}
+
+# ==========================================
+# 18. V158 纯正主线内核裸装 + initramfs 引导保护
+# ==========================================
+do_xanmod_compile() {
+    title "创世重铸：编译安装最新主线原生内核 + BBR3 (全方位防爆板)"
+    warn "警告: 这是一个极其漫长的过程 (30-60分钟)！"
+    read -rp "确定要点燃源码编译引擎吗？(y/n): " confirm
+    if [[ "$confirm" != "y" ]]; then
+        return
+    fi
+
+    print_magenta ">>> [1/7] 执行深度清理与初始化编译环境..."
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -y
     apt-get install -y build-essential bc bison flex libssl-dev libelf-dev libncurses-dev zstd git wget curl xz-utils ethtool numactl make pkg-config
+    
+    check_and_create_1gb_swap
 
-    local CPU=$(nproc)
-    local RAM=$(free -m | awk '/Mem/{print $2}')
-    local THREADS=1
-    if [ "$RAM" -ge 2000 ]; then THREADS=$CPU; fi
-    local IFACE=$(ip route get 1.1.1.1 | awk '{print $5; exit}')
-
+    print_magenta ">>> [2/7] 从 Kernel.org 拉取最新 Stable 纯净版源码..."
+    local BUILD_DIR="/usr/src"
     cd $BUILD_DIR
+    
     local KERNEL_URL=$(curl -s https://www.kernel.org/releases.json | grep -A3 '"is_latest": true' | grep tarball | head -1 | awk -F'"' '{print $4}')
-    if [ -z "$KERNEL_URL" ] || [ "$KERNEL_URL" == "null" ]; then KERNEL_URL="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.8.tar.xz"; fi
+    if [ -z "$KERNEL_URL" ] || [ "$KERNEL_URL" == "null" ]; then
+        KERNEL_URL="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.8.tar.xz"
+    fi
     local KERNEL_FILE=$(basename $KERNEL_URL)
     wget -q --show-progress $KERNEL_URL -O $KERNEL_FILE
 
     if ! tar -tJf $KERNEL_FILE >/dev/null 2>&1; then
         rm -f $KERNEL_FILE
         wget -q --show-progress $KERNEL_URL -O $KERNEL_FILE
-        tar -tJf $KERNEL_FILE >/dev/null 2>&1 || { echo "下载或解压验证失败，已中止。"; exit 1; }
+        tar -tJf $KERNEL_FILE >/dev/null 2>&1 || { error "包体结构受损！"; return 1; }
     fi
 
     tar -xJf $KERNEL_FILE
     local KERNEL_DIR=$(tar -tf $KERNEL_FILE | head -1 | cut -d/ -f1)
     cd $KERNEL_DIR
 
+    print_magenta ">>> [3/7] 注入原生防爆内核配置参数..."
     make defconfig
     make scripts
     
     ./scripts/config --enable CONFIG_TCP_CONG_BBR
     ./scripts/config --enable CONFIG_DEFAULT_BBR
     ./scripts/config --enable CONFIG_TCP_BBR3 2>/dev/null || true
+    
     ./scripts/config --disable CONFIG_DRM_I915
     ./scripts/config --disable CONFIG_NET_VENDOR_REALTEK
     ./scripts/config --disable CONFIG_NET_VENDOR_BROADCOM
     ./scripts/config --disable CONFIG_E100
     
-    make olddefconfig
-    make -j$THREADS
+    ./scripts/config --disable SYSTEM_TRUSTED_KEYS
+    ./scripts/config --disable SYSTEM_REVOCATION_KEYS
+    ./scripts/config --disable DEBUG_INFO_BTF
+    ./scripts/config --disable DEBUG_INFO
+    
+    yes "" | make olddefconfig
+
+    print_magenta ">>> [4/7] 启动多线程源码暴力裸编译 (make)..."
+    local CPU=$(nproc)
+    local RAM=$(free -m | awk '/Mem/{print $2}')
+    local THREADS=1
+    
+    if [ "$RAM" -ge 2000 ]; then
+        THREADS=$CPU
+    fi
+    
+    if ! make -j$THREADS; then
+        error "内核编译遭遇致命错误！"
+        read -rp "按 Enter 返回主菜单..." _
+        return 1
+    fi
+
+    print_magenta ">>> [5/7] 强行植入底层模块与内核物理挂载 (make install)..."
     make modules_install
     make install
 
-    local CURRENT=$(uname -r)
-    dpkg --list | grep linux-image | awk '{print $2}' | grep -v "$CURRENT" | xargs -r apt-get -y purge
-    find /lib/modules -mindepth 1 -maxdepth 1 -type d | grep -v "$CURRENT" | xargs -r rm -rf
+    # 提取新内核的精确版本号
+    local NEW_KERNEL_VER=$(make -s kernelrelease)
+    
+    print_magenta ">>> [6/7] 生成救命稻草级的 Initramfs 初始引导盘..."
+    update-initramfs -c -k "$NEW_KERNEL_VER" || true
+
+    print_magenta ">>> [7/7] 刷新 GRUB 系统引导器..."
+    # 绝对禁止执行 apt-get purge 删除旧内核，保留回滚入口！
     update-grub || true
 
-    cat > /usr/local/bin/nic-optimize.sh <<'EONIC'
-#!/bin/bash
-IFACE=$(ip route get 1.1.1.1 | awk '{print $5; exit}')
-ethtool -K $IFACE gro off gso off tso off lro off rx-gro-hw off tx-udp-segmentation on 2>/dev/null || true
-ethtool -C $IFACE adaptive-rx off rx-usecs 0 tx-usecs 0 2>/dev/null || true
-EONIC
-    chmod +x /usr/local/bin/nic-optimize.sh
-
-    cat > /etc/systemd/system/nic-optimize.service <<EOSERVICE
-[Unit]
-Description=NIC Hardware Optimization
-After=network.target
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/nic-optimize.sh
-TimeoutSec=30
-RemainAfterExit=yes
-[Install]
-WantedBy=multi-user.target
-EOSERVICE
-
-    systemctl daemon-reload
-    systemctl enable nic-optimize.service
-    systemctl start nic-optimize.service
-
-    local RXMAX=$(ethtool -g "$IFACE" 2>/dev/null | awk '/RX:/ {print $2; exit}')
-    if [ -n "$RXMAX" ]; then ethtool -G "$IFACE" rx "$RXMAX" tx "$RXMAX" || true; fi
-
-    local CPU_MASK=$(printf "%x" $(( (1<<CPU)-1 )))
-    cat > /usr/local/bin/rps-optimize.sh <<'EOF'
-#!/bin/bash
-IFACE=$(ip route get 1.1.1.1 | awk '{print $5; exit}')
-CPU=$(nproc)
-CPU_MASK=$(printf "%x" $(( (1<<CPU)-1 )))
-RX_QUEUES=$(ls /sys/class/net/$IFACE/queues/ | grep rx- | wc -l)
-for RX in /sys/class/net/$IFACE/queues/rx-*; do echo $CPU_MASK > $RX/rps_cpus 2>/dev/null || true; done
-for TX in /sys/class/net/$IFACE/queues/tx-*; do echo $CPU_MASK > $TX/xps_cpus 2>/dev/null || true; done
-sysctl -w net.core.rps_sock_flow_entries=131072
-FLOW_PER_QUEUE=$((65535 / RX_QUEUES))
-for RX in /sys/class/net/$IFACE/queues/rx-*; do echo $FLOW_PER_QUEUE > $RX/rps_flow_cnt 2>/dev/null || true; done
-EOF
-    chmod +x /usr/local/bin/rps-optimize.sh
-
-    cat > /etc/systemd/system/rps-optimize.service <<EOF
-[Unit]
-Description=RPS RFS Network CPU Optimization
-After=network.target
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/rps-optimize.sh
-RemainAfterExit=yes
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    systemctl daemon-reload
-    systemctl enable rps-optimize.service
-    systemctl start rps-optimize.service
-
-    for irq in $(grep "$IFACE" /proc/interrupts | awk '{print $1}' | tr -d ':'); do echo $MASK > /proc/irq/$irq/smp_affinity || true; done
-
     cd /
-    rm -rf $BUILD_DIR/linux* $BUILD_DIR/$KERNEL_FILE /compile/* /root/linux*
-    info "内核编译与网卡优化已全部就绪！系统将在 30 秒后自动重启应用更改..."
-    sleep 30
+    rm -rf $BUILD_DIR/linux-* 2>/dev/null || true
+    rm -rf $BUILD_DIR/$KERNEL_FILE 2>/dev/null || true
+
+    info "神迹已成！纯净内核挂载顺利，10 秒后重启..."
+    sleep 10
     reboot
 }
-
 
 # ==========================================
 # 19. V62 全量 60+ 行网络栈阵列调优
