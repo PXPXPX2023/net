@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# 脚本名称: ex160.sh (The Apex Vanguard - Project Genesis V160 [Absolute Horizon])
+# 脚本名称: ex161.sh (The Apex Vanguard - Project Genesis V160 [Absolute Horizon])
 # 快捷方式: xrv
 # ==============================================================================
 # 终极溯源重铸宣言 (去冗余废话、真·全量展开版): 
@@ -16,7 +16,7 @@
 # 0. 基础环境与安全防线
 # ==========================================
 if test -z "$BASH_VERSION"; then
-    echo "错误: 本脚本采用了大量高级特性，请严格使用 bash 运行: bash ex160.sh"
+    echo "错误: 本脚本采用了大量高级特性，请严格使用 bash 运行: bash ex161.sh"
     exit 1
 fi
 
@@ -3788,7 +3788,7 @@ main_menu() {
     while true; do
         clear
         echo -e "${blue}======================================================================${none}"
-        echo -e "  ${magenta}Xray ex160 The Apex Vanguard - Project Genesis V160 (创世真核版)${none}"
+        echo -e "  ${magenta}Xray ex161 The Apex Vanguard - Project Genesis V160 (创世真核版)${none}"
         
         local svc=$(systemctl is-active xray 2>/dev/null || echo "inactive")
         if test "$svc" = "active"; then 
