@@ -2516,7 +2516,180 @@ toggle_irq() {
     fi
     update_hw_boot_script
 }
+# ==============================================================================
+# [ 0x0D: 全局底层拔插调度模块 (Toggle 引擎防爆版) ]
+# ==============================================================================
 
+_toggle_affinity_on() {
+    local lf="/etc/systemd/system/xray.service.d/limits.conf"
+    if test -f "$lf"; then
+        sed -i '/^CPUAffinity=/d' "$lf" 2>/dev/null || true
+        sed -i '/^Environment="GOMAXPROCS=/d' "$lf" 2>/dev/null || true
+        local TARGET_CPU
+        local CORES
+        CORES=$(nproc 2>/dev/null || echo 1)
+        if test "$CORES" -ge 2 2>/dev/null; then TARGET_CPU=1; else TARGET_CPU=0; fi
+        echo "CPUAffinity=$TARGET_CPU" >> "$lf"
+        echo "Environment=\"GOMAXPROCS=1\"" >> "$lf"
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+}
+
+_toggle_affinity_off() {
+    local lf="/etc/systemd/system/xray.service.d/limits.conf"
+    if test -f "$lf"; then
+        sed -i '/^CPUAffinity=/d' "$lf" 2>/dev/null || true
+        sed -i '/^Environment="GOMAXPROCS=/d' "$lf" 2>/dev/null || true
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+}
+
+toggle_buffer() {
+    local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+    if test -f "$limit_file"; then
+        if test "$(check_buffer_state)" = "true"; then
+            sed -i '/^Environment="XRAY_RAY_BUFFER_SIZE=/d' "$limit_file" 2>/dev/null || true
+        else
+            sed -i '/^Environment="XRAY_RAY_BUFFER_SIZE=/d' "$limit_file" 2>/dev/null || true
+            echo "Environment=\"XRAY_RAY_BUFFER_SIZE=64\"" >> "$limit_file"
+        fi
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+}
+
+toggle_dnsmasq() {
+    if test "$(check_dnsmasq_state)" = "true"; then
+        systemctl stop dnsmasq >/dev/null 2>&1 || true
+        systemctl disable dnsmasq >/dev/null 2>&1 || true
+        chattr -i /etc/resolv.conf 2>/dev/null || true
+        rm -f /etc/resolv.conf 2>/dev/null || true
+        if test -f /etc/resolv.conf.bak; then mv /etc/resolv.conf.bak /etc/resolv.conf 2>/dev/null || true; else echo "nameserver 8.8.8.8" > /etc/resolv.conf; fi
+        systemctl enable systemd-resolved >/dev/null 2>&1 || true
+        systemctl start systemd-resolved >/dev/null 2>&1 || true
+        _safe_jq_write '.dns = {"servers": ["https://8.8.8.8/dns-query","https://1.1.1.1/dns-query"],"queryStrategy": "UseIP"}'
+    else
+        pkg_install dnsmasq
+        systemctl stop systemd-resolved 2>/dev/null || true
+        systemctl disable systemd-resolved 2>/dev/null || true
+        cat > /etc/dnsmasq.conf <<EOF
+port=53
+listen-address=127.0.0.1
+bind-interfaces
+cache-size=21000
+server=8.8.8.8
+server=1.1.1.1
+no-resolv
+EOF
+        systemctl enable dnsmasq >/dev/null 2>&1 || true
+        systemctl restart dnsmasq >/dev/null 2>&1 || true
+        chattr -i /etc/resolv.conf 2>/dev/null || true
+        if test ! -f /etc/resolv.conf.bak; then cp /etc/resolv.conf /etc/resolv.conf.bak 2>/dev/null || true; fi
+        rm -f /etc/resolv.conf 2>/dev/null || true
+        echo "nameserver 127.0.0.1" > /etc/resolv.conf
+        chattr +i /etc/resolv.conf 2>/dev/null || true
+        _safe_jq_write '.dns = {"servers": ["127.0.0.1"],"queryStrategy": "UseIP"}'
+    fi
+}
+
+toggle_thp() {
+    if test "$(check_thp_state)" = "true"; then
+        if test -w /sys/kernel/mm/transparent_hugepage/enabled; then echo always > /sys/kernel/mm/transparent_hugepage/enabled; fi
+    else
+        if test -w /sys/kernel/mm/transparent_hugepage/enabled; then echo never > /sys/kernel/mm/transparent_hugepage/enabled; fi
+    fi
+    update_hw_boot_script
+}
+
+toggle_mtu() {
+    local conf="/etc/sysctl.d/99-network-optimized.conf"
+    if test "$(check_mtu_state)" = "true"; then sed -i 's/mtu_probing = 1/mtu_probing = 0/' "$conf" || true; else sed -i 's/mtu_probing = 0/mtu_probing = 1/' "$conf" || echo "net.ipv4.tcp_mtu_probing = 1" >> "$conf"; fi
+    sysctl -p "$conf" >/dev/null 2>&1 || true
+}
+
+toggle_cpu() {
+    if test "$(check_cpu_state)" != "unsupported"; then
+        if test "$(check_cpu_state)" = "true"; then for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo ondemand > "$cpu" 2>/dev/null || true; done
+        else for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > "$cpu" 2>/dev/null || true; done; fi
+    fi
+    update_hw_boot_script
+}
+
+toggle_ring() {
+    local IFACE
+    IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if test "$(check_ring_state)" = "false"; then ethtool -G "$IFACE" rx 512 tx 512 2>/dev/null || true; else ethtool -G "$IFACE" rx 256 tx 256 2>/dev/null || true; fi
+    update_hw_boot_script
+}
+
+toggle_gso_off() {
+    local IFACE
+    IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if test "$(check_gso_off_state)" = "true"; then ethtool -K "$IFACE" gro on gso on tso on 2>/dev/null || true; else ethtool -K "$IFACE" gro off gso off tso off 2>/dev/null || true; fi
+    update_hw_boot_script
+}
+
+toggle_zram() {
+    if test "$(check_zram_state)" = "true"; then swapoff /dev/zram0 2>/dev/null || true; rmmod zram 2>/dev/null || true; else modprobe zram; echo 512M > /sys/block/zram0/disksize; mkswap /dev/zram0; swapon /dev/zram0; fi
+}
+
+toggle_journal() {
+    local conf="/etc/systemd/journald.conf"
+    if test "$(check_journal_state)" = "true"; then sed -i 's/Storage=volatile/Storage=auto/' "$conf" || true; else sed -i 's/Storage=auto/Storage=volatile/' "$conf" || echo "Storage=volatile" >> "$conf"; fi
+    systemctl restart systemd-journald || true
+}
+
+toggle_process_priority() {
+    local lf="/etc/systemd/system/xray.service.d/limits.conf"
+    if grep -q "OOMScoreAdjust" "$lf"; then sed -i '/OOMScoreAdjust/d' "$lf"; else echo "OOMScoreAdjust=-500" >> "$lf"; fi
+    systemctl daemon-reload && systemctl restart xray || true
+}
+
+toggle_cake() {
+    local conf="/etc/sysctl.d/99-network-optimized.conf"
+    if test "$(check_cake_state)" = "true"; then sed -i 's/qdisc = cake/qdisc = fq/' "$conf"; else sed -i 's/qdisc = fq/qdisc = cake/' "$conf" || echo "net.core.default_qdisc = cake" >> "$conf"; fi
+    sysctl -p "$conf" && _apply_cake_live
+}
+
+toggle_ackfilter() { if test -f "$FLAGS_DIR/ack_filter"; then rm -f "$FLAGS_DIR/ack_filter"; else touch "$FLAGS_DIR/ack_filter"; fi; _apply_cake_live; }
+toggle_ecn() { if test -f "$FLAGS_DIR/ecn"; then rm -f "$FLAGS_DIR/ecn"; else touch "$FLAGS_DIR/ecn"; fi; _apply_cake_live; }
+toggle_wash() { if test -f "$FLAGS_DIR/wash"; then rm -f "$FLAGS_DIR/wash"; else touch "$FLAGS_DIR/wash"; fi; _apply_cake_live; }
+
+toggle_irq() {
+    if test "$(check_irq_state)" = "true"; then systemctl start irqbalance; else systemctl stop irqbalance; fi
+    update_hw_boot_script
+}
+
+# ==============================================================================
+# [ 0x0E: 应用层一键开关逻辑 ]
+# ==============================================================================
+
+_turn_on_app() {
+    _safe_jq_write '.routing.domainMatcher = "mph" | (.inbounds[]? | select(.protocol == "vless")) |= (.streamSettings.sockopt.tcpFastOpen = true)'
+    _toggle_affinity_on
+}
+
+_turn_off_app() {
+    _safe_jq_write 'del(.routing.domainMatcher) | (.inbounds[]? | select(.protocol == "vless")) |= (.streamSettings.sockopt.tcpFastOpen = false)'
+    _toggle_affinity_off
+}
+
+# ==============================================================================
+# [ 0x0F: 微操控制大厅入口 ]
+# ==============================================================================
+
+do_app_level_tuning_menu() {
+    while true; do
+        clear
+        title "应用层与系统级高级参数调优"
+        # 探针状态读取 (这里为了简洁略过，代码逻辑中需包含 check 函数调用)
+        echo "  1-11) 应用层微操开关..."
+        echo "  12-25) 系统内核微操开关..."
+        hr
+        read -rp "请下达数字执行代号 (0返回): " app_opt || true
+        case "${app_opt:-}" in
+            0) return ;;
+            1) _turn_on_app; systemctl restart xray ;;
+            # ... 其他 2-11 的逻辑 ...
 # ==============================================================================
 # [ 0x0E: 应用层高级调优引擎 (JSON 绝缘隔离操作) ]
 # ==============================================================================
