@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# 脚本名称: ex188t41.sh (The Apex Vanguard - Ultimate Genesis 4000+ Pro)
+# 脚本名称: ex188t42.sh (The Apex Vanguard - Ultimate Genesis 4000+ Pro)
 # 快捷方式: xrv
 # 版本号: V188t41.Mega.Perfect.Fusion
 #
@@ -19,7 +19,7 @@
 
 # 优先执行 Bash 版本守卫，拦截 dash 运行
 if test -z "${BASH_VERSION:-}"; then
-    echo "Error: 严重错误！本脚本深度依赖 Bash 高级特性，请执行: bash ex188t41.sh"
+    echo "Error: 严重错误！本脚本深度依赖 Bash 高级特性，请执行: bash ex188t42.sh"
     exit 1
 fi
 
@@ -4227,7 +4227,7 @@ main_menu() {
     while true; do
         clear
         echo -e "${blue}===================================================${none}"
-        echo -e "  ${magenta}Xray ex188t41 The Apex Vanguard - Project Genesis V188${none}"
+        echo -e "  ${magenta}Xray ex188t42 The Apex Vanguard - Project Genesis V188${none}"
         
         local svc
         svc=$(systemctl is-active xray 2>/dev/null || echo "inactive")
