@@ -137,6 +137,36 @@ log_error() {
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] [ERROR] $*" >> "$LOG_DIR/script_error.log" 2>/dev/null || true 
     fi
 }
+# ------------------------------------------------------------------------------
+# [ 0x04.5: 全局公网 IP 探针 (带内存缓存与严格模式防爆) ]
+# ------------------------------------------------------------------------------
+_get_ip() {
+    # 优先使用 preflight 已经抓取到的极速缓存，拒绝重复发包卡顿
+    if test -n "${SERVER_IP:-}"; then
+        if test "$SERVER_IP" != "获取失败"; then
+            echo "$SERVER_IP"
+            return
+        fi
+    fi
+
+    # 如果缓存失效，则启动无损探测，兼容 set -e 严格模式
+    if test -z "${GLOBAL_IP:-}"; then
+        local temp_ip=""
+        temp_ip=$(curl -k -s -4 --connect-timeout 3 https://api.ipify.org 2>/dev/null | tr -d '\r\n' || echo "")
+        
+        if test -z "$temp_ip"; then
+            temp_ip=$(curl -k -s -4 --connect-timeout 3 https://ifconfig.me 2>/dev/null | tr -d '\r\n' || echo "")
+        fi
+        
+        if test -z "$temp_ip"; then
+            GLOBAL_IP="外网探针离线"
+        else
+            GLOBAL_IP="$temp_ip"
+        fi
+    fi
+    
+    echo "$GLOBAL_IP"
+}
 
 # ------------------------------------------------------------------------------
 # [ 0x05: 企业级 Trap 异常捕获网与灾难清理 ]
