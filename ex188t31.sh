@@ -3694,8 +3694,8 @@ main_menu() {
             88) do_uninstall ;;
             0) exit 0 ;;
             *) 
-                echo -e "${gl_hong}❌ 指令错误！${gl_bai}"
-                sleep 1 
+                echo -e "${red}❌ 指令错误！${none}"
+                sleep 1
                 ;;
         esac
     done
