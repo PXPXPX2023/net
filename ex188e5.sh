@@ -862,113 +862,55 @@ check_and_create_1gb_swap() {
 do_install_xanmod_main_official() {
     title "系统飞升：安装官方预编译 XANMOD 内核"
     
-    local arch
-    arch=$(uname -m 2>/dev/null || echo "")
-    
-    if test "$arch" != "x86_64"; then
-        error "系统架构不匹配：官方预编译 Xanmod 目前仅支持 x86_64 (amd64) 架构的机器！"
-        local _pause=""
-        read -rp "按 Enter 返回..." _pause || true
-        return
-    fi
-
-    if test ! -f /etc/debian_version; then
-        error "系统发行版排斥：官方预编译 Xanmod APT 仓库目前仅兼容 Debian / Ubuntu 系操作系统！"
-        local _pause=""
-        read -rp "按 Enter 返回..." _pause || true
-        return
-    fi
-
-    print_magenta ">>> [1/4] 正在拉取智能探针，检测本地 CPU 硬件微架构支持级别..."
-    
-    local cpu_level_script="/tmp/check_x86-64_psabi.sh"
-    
-    if ! wget -qO "$cpu_level_script" https://dl.xanmod.org/check_x86-64_psabi.sh; then
-        warn "探针脚本下载遇到网络波动，将跳过精准检测。"
-    fi
-    
-    local cpu_level=""
-    if test -f "$cpu_level_script"; then
-        set +e
-        cpu_level=$(awk -f "$cpu_level_script" 2>/dev/null | grep -oE 'x86-64-v[1-4]' | grep -oE '[1-4]' | tail -n 1 || echo "")
-        set -e
-        rm -f "$cpu_level_script" 2>/dev/null || true
-    fi
-    
-    if test -z "$cpu_level"; then
-        cpu_level=2
-        warn "未能精确检测 CPU 微架构级别，将默认降级使用系统最宽容的 v2 兼容版本。"
-    else
-        info "评估完成，当前 CPU 硬件完美支持的微架构最高级别为: v${cpu_level}"
-    fi
-
-    print_magenta ">>> [2/4] 正在配置 Xanmod 官方全新 APT 仓库与防伪 Keyring..."
-    
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update -y >/dev/null 2>&1 || true
-    apt-get install -y gnupg gnupg2 curl sudo wget e2fsprogs ca-certificates >/dev/null 2>&1 || true
-
-    # 【核心修复 1：Debian 11 兼容 GPG 格式，确保源列表被正确识别】
-    mkdir -p /usr/share/keyrings 2>/dev/null || true
-    rm -f /etc/apt/trusted.gpg.d/xanmod-kernel.gpg /etc/apt/sources.list.d/xanmod-kernel.list /etc/apt/sources.list.d/xanmod-release.list 2>/dev/null || true
-    
-    if ! curl -fsSL https://dl.xanmod.org/archive.key | gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg --yes 2>/dev/null; then
-        error "从远端获取 GPG 密钥链发生错误，官方源可能受限！"
+    if [[ "$(uname -m)" != "x86_64" ]]; then
+        error "系统架构不匹配：仅支持 x86_64 架构！"
         return 1
     fi
+
+    print_magenta ">>> [1/3] 正在配置 Xanmod 官方 APT 仓库与 GPG 密钥..."
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -y >/dev/null 2>&1
+    apt-get install -y gnupg gnupg2 curl wget ca-certificates >/dev/null 2>&1
+
+    # 清理旧的错误源
+    rm -f /etc/apt/trusted.gpg.d/xanmod-kernel.gpg /etc/apt/sources.list.d/xanmod-kernel.list /etc/apt/sources.list.d/xanmod-release.list
     
+    # 现代化规范导入 GPG Key
+    curl -fsSL https://dl.xanmod.org/archive.key | gpg --dearmor --yes -o /usr/share/keyrings/xanmod-archive-keyring.gpg
     echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' > /etc/apt/sources.list.d/xanmod-release.list
 
-    print_magenta ">>> [3/4] 正在触发 APT 智能降级寻址阵列 (实时同步中)..."
-    apt-get update -y >/dev/null 2>&1 || warn "APT 源刷新遇到网络异常"
+    print_magenta ">>> [2/3] 正在检测 CPU 微架构支持级别..."
+    wget -qO check_x86-64_psabi.sh https://dl.xanmod.org/check_x86-64_psabi.sh
+    chmod +x check_x86-64_psabi.sh
+    local cpu_level=$(./check_x86-64_psabi.sh | awk -F 'v' '{print $2}' || echo "1")
+    rm -f check_x86-64_psabi.sh
     
-    # 剔除废柴 apt-cache show 逻辑，直接信任 CPU 级别探针
+    [[ -z "$cpu_level" ]] && cpu_level=1
+    info "当前 CPU 完美支持的微架构级别为: v${cpu_level}"
+
+    print_magenta ">>> [3/3] 正在安装 linux-xanmod-x64v${cpu_level} 内核..."
+    apt-get update -y
+    
     local pkg_name="linux-xanmod-x64v${cpu_level}"
     
-    info "寻址成功！锁定云端目标底层包: $pkg_name"
-    print_magenta ">>> [4/4] 正在向主系统强行注入战舰级内核: $pkg_name ..."
-    
     if ! apt-get install -y "$pkg_name"; then
-        error "保底安装宣告失败，内核替换进程中止。请排查物理网络环境与 APT 源配置！"
-        local _pause=""
-        read -rp "按 Enter 继续..." _pause || true
-        return 1
-    fi
-    done
-
-    if test -z "$pkg_name"; then
-        warn "标准架构包名全线脱靶，正在唤醒 APT 模糊寻址雷达..."
-        pkg_name=$(apt-cache search "linux-image-.*xanmod" | grep -vE "dbg|headers" | awk '{print $1}' | head -n 1 || echo "")
-    fi
-    set -e
-    
-    if test -z "$pkg_name"; then
-        error "保底寻址宣告失败！当前系统源无法解析到任何合法的 Xanmod 预编译包。"
-        local _pause=""
-        read -rp "按 Enter 继续..." _pause || true
-        return 1
-    fi
-    
-    info "寻址成功！锁定云端目标底层包: $pkg_name"
-
-    print_magenta ">>> [4/4] 正在向主系统强行注入战舰级内核: $pkg_name ..."
-    
-    if ! apt-get install -y "$pkg_name"; then
-        error "保底安装宣告失败，内核替换进程中止。请排查物理网络环境与 APT 源配置！"
-        local _pause=""
-        read -rp "按 Enter 继续..." _pause || true
-        return 1
+        warn "精准包名寻址失败，尝试模糊匹配并安装最新 Xanmod..."
+        local fallback_pkg=$(apt-cache search "linux-image-.*xanmod" | grep -vE "dbg|headers" | sort -V | tail -n 1 | awk '{print $1}')
+        if [[ -z "$fallback_pkg" ]]; then
+            error "彻底寻址失败！请排查网络是否屏蔽了 deb.xanmod.org！"
+            return 1
+        fi
+        info "找到备用包: $fallback_pkg，准备安装..."
+        apt-get install -y "$fallback_pkg" || return 1
     fi
 
     if command -v update-grub >/dev/null 2>&1; then
-        update-grub >/dev/null 2>&1 || true
+        update-grub
     else
-        apt-get install -y grub2-common >/dev/null 2>&1 || true
-        update-grub >/dev/null 2>&1 || true
+        apt-get install -y grub2-common && update-grub
     fi
 
-    info "官方预编译 XANMOD 部署与注册已全部就绪！"
-    warn "系统将在 10 秒后强制重启应用新内核..."
+    info "官方预编译 XANMOD 部署完成！10 秒后将自动重启..."
     sleep 10
     reboot
 }
@@ -978,227 +920,91 @@ do_install_xanmod_main_official() {
 # ------------------------------------------------------------------------------
 
 do_xanmod_compile() {
-    title "系统飞升：源码编译 XANMOD 官方内核 + BBR3 (极客锻造模式)"
-    
+    title "系统飞升：源码编译 XANMOD 官方内核 + BBR3"
     warn "警告: 这是一个极其漫长的过程 (30-60分钟)，请确保 SSH 连接稳定！"
-    local confirm=""
-    read -rp "确定要执意开始源码编译吗？(y/n): " confirm || true
-    
-    if test "$confirm" != "y"; then
-        if test "$confirm" != "Y"; then
-            return
-        fi
-    fi
+    read -rp "确定要执意开始源码编译吗？(y/n): " confirm
+    [[ ! "$confirm" =~ ^[yY]$ ]] && return
 
-    title "=== [1/8] 开始执行深度系统清理与空间释放 ==="
-    
     export DEBIAN_FRONTEND=noninteractive
-    apt-get clean >/dev/null 2>&1 || true
-    apt-get autoremove -y --purge >/dev/null 2>&1 || true
-    journalctl --vacuum-time=1d >/dev/null 2>&1 || true
-    
-    rm -rf /var/log/*.log 2>/dev/null || true
-    rm -rf /tmp/* 2>/dev/null || true
-    rm -rf /usr/src/linux* 2>/dev/null || true
-    sync
+    apt-get clean && apt-get autoremove -y --purge
 
-    local inode_use
-    inode_use=$(df -i / 2>/dev/null | awk 'NR==2{print $5}' | tr -d '%' || echo "0")
-    if test "$inode_use" -gt 90 2>/dev/null; then
-        warn "检测到 inode 节点使用率过高，执行紧急深度释放缓存..."
-        rm -rf /var/cache/* 2>/dev/null || true
-    fi
-
-    title "=== [2/8] 检查并配置 1GB 编译缓冲交换区 (Swap) ==="
+    title "=== [1/5] 配置 1GB 编译缓冲交换区 (Swap) ==="
     check_and_create_1gb_swap
 
-    title "=== [3/8] 拉取底层 GCC 编译套件与开发依赖库 ==="
-    
-    local root_free
-    root_free=$(df -m / 2>/dev/null | awk 'NR==2{print $4}' || echo "0")
-    
-    local BUILD_DIR=""
-    if test "$root_free" -gt 4000 2>/dev/null; then 
-        mkdir -p /compile 2>/dev/null || true
-        BUILD_DIR="/compile"
-        info "根目录空间充裕，工作区路由至: /compile"
-    else 
-        BUILD_DIR="/usr/src"
-        info "工作区默认路由至: /usr/src"
-    fi
+    title "=== [2/5] 拉取 GCC 编译套件与依赖库 ==="
+    local BUILD_DIR="/usr/src"
+    apt-get update -y
+    apt-get install -y build-essential bc bison flex libssl-dev libelf-dev libncurses-dev zstd lz4 liblz4-tool lzma bzip2 git wget curl xz-utils ethtool make pkg-config dwarves rsync python3 libdw-dev cpio
 
-    apt-get update -y >/dev/null 2>&1 || true
-    apt-get install -y build-essential bc bison flex libssl-dev libelf-dev libncurses-dev zstd lz4 liblz4-tool lzma bzip2 git wget curl xz-utils ethtool numactl make pkg-config dwarves rsync python3 libdw-dev cpio >/dev/null 2>&1 || true
+    local CPU=$(nproc 2>/dev/null || echo 1)
+    local THREADS=$CPU
 
-    local CPU
-    CPU=$(nproc 2>/dev/null || echo 1)
-    local RAM
-    RAM=$(free -m 2>/dev/null | awk '/Mem/{print $2}' || echo 1024)
-    local THREADS=1
-    
-    if test "$RAM" -ge 2000 2>/dev/null; then 
-        THREADS=$CPU
-    else
-        if test "$RAM" -ge 1000 2>/dev/null; then
-            THREADS=2
-        fi
-    fi
-
-    title "=== [4/8] 探测并拉取 Xanmod 官方最新稳定版源码 ==="
-    
-    if ! cd "$BUILD_DIR"; then
-        die "权限异常：系统拒绝切入工作区 $BUILD_DIR。"
-    fi
-    
-    info "正在连接 GitLab 获取 Xanmod 最新分支..."
-    local XANMOD_TAG=""
-    set +e
-    XANMOD_TAG=$(curl -sL "https://gitlab.com/api/v4/projects/xanmod%2Flinux/repository/tags" 2>/dev/null | jq -r '.[0].name' | grep -v "rc" | head -n 1 || echo "")
-    set -e
-    
-    if test -z "$XANMOD_TAG" || test "$XANMOD_TAG" = "null"; then 
-        warn "动态寻址失败，强行锁定高可用备用版本 6.10.3-xanmod1..."
-        XANMOD_TAG="6.10.3-xanmod1"
-    fi
+    title "=== [3/5] 拉取 Xanmod 最新源码 ==="
+    cd "$BUILD_DIR" || return 1
+    local XANMOD_TAG=$(curl -sL "https://gitlab.com/api/v4/projects/xanmod%2Flinux/repository/tags" | jq -r '.[0].name' | grep -v "rc" | head -n 1)
+    [[ -z "$XANMOD_TAG" || "$XANMOD_TAG" == "null" ]] && XANMOD_TAG="6.18.25-rt-xanmod1"
     
     local KERNEL_URL="https://gitlab.com/xanmod/linux/-/archive/${XANMOD_TAG}/linux-${XANMOD_TAG}.tar.gz"
     local KERNEL_FILE="xanmod-${XANMOD_TAG}.tar.gz"
     
-    info "建立直连信道，开始拉取 Xanmod 源码包: $KERNEL_FILE"
     wget -q --show-progress "$KERNEL_URL" -O "$KERNEL_FILE"
+    tar -xzf "$KERNEL_FILE" || { error "解压失败"; return 1; }
+    cd "linux-${XANMOD_TAG}" || return 1
 
-    set +o pipefail
-    if ! tar -tzf "$KERNEL_FILE" >/dev/null 2>&1; then
-        warn "检测到初次获取的源码包发生数据断层，触发重试..."
-        rm -f "$KERNEL_FILE" 2>/dev/null || true
-        wget -q --show-progress "$KERNEL_URL" -O "$KERNEL_FILE"
-        if ! tar -tzf "$KERNEL_FILE" >/dev/null 2>&1; then
-            set -o pipefail
-            error "下载或解压验证连续失败，编译行动强制中止。"
-            return 1
-        fi
-    fi
-    set -o pipefail
-
-    info "执行 GZ 极致解压，释放 Xanmod 源码..."
-    tar -xzf "$KERNEL_FILE"
-    
-    local KERNEL_DIR="linux-${XANMOD_TAG}"
-    if ! cd "$KERNEL_DIR"; then
-        die "无法切入解压后的源码目录: $KERNEL_DIR。"
-    fi
-
-    title "=== [5/8] 注入底层驱动与绝缘防爆参数 ==="
-    
-    if test -f "/boot/config-$(uname -r)"; then
+    title "=== [4/5] 生成并规范化内核配置 ==="
+    if [[ -f "/boot/config-$(uname -r)" ]]; then
         cp "/boot/config-$(uname -r)" .config
-        info "已成功提取当前内核配置作为蓝本。"
-    elif modprobe configs 2>/dev/null && test -f /proc/config.gz; then
+    elif modprobe configs 2>/dev/null && [[ -f /proc/config.gz ]]; then
         zcat /proc/config.gz > .config
-        info "已成功提取内存运行时配置 (/proc/config.gz)。"
     else
-        make defconfig >/dev/null 2>&1 || true
+        make defconfig
     fi
     
-    # 【核心修复 2：物理篡改 Makefile，斩断 x86-64-v 架构参数断层】
-    info "物理破坏源文件中的架构检查逻辑，防止 GCC 参数畸形..."
-    sed -i 's/-march=x86-64-v$(CONFIG_X86_64_VERSION)/-march=x86-64-v2/g' arch/x86/Makefile 2>/dev/null || true
-    
-    info "正在抹平新老内核代差，执行首次静默对齐..."
-    yes "" | make olddefconfig >/dev/null 2>&1 || true
-    make scripts >/dev/null 2>&1 || true
-    
-    ./scripts/config --set-val X86_64_VERSION 2
-    ./scripts/config --enable X86_64_V2
-    
-    info "注入 KVM/Xen 底层虚拟化驱动映射层 (VIRTIO)..."
-    ./scripts/config --enable VIRTIO
-    # ... (保留其他 virtio 和 bbr 的注入) ...
-    
-    info "正在顺应新版内核代差，配置 CPU 架构等级..."
-    # 彻底删除原有的 sed -i 's/-march=... 物理破坏逻辑
-    # 放弃旧版的 --set-val X86_64_VERSION 2，改用标准布尔开关
+    yes "" | make olddefconfig >/dev/null 2>&1
+    make scripts >/dev/null 2>&1
+
+    # 正规方式开启 X86_64_V2 (抛弃危险的 sed physical destruction)
     ./scripts/config --enable GENERIC_CPU
     ./scripts/config --disable GENERIC_CPU_V1
+    ./scripts/config --enable GENERIC_CPU_V2
     ./scripts/config --enable X86_64_V2
-    ./scripts/config --enable GENERIC_CPU_V2 2>/dev/null || true
+    ./scripts/config --enable VIRTIO
 
-    info "正在剥离 Debian/Ubuntu 证书锁与臃肿调试信息..."
-    ./scripts/config --disable DRM_I915
-    ./scripts/config --disable NET_VENDOR_REALTEK
-    ./scripts/config --disable NET_VENDOR_BROADCOM
-    
     ./scripts/config --disable MODULE_SIG
     ./scripts/config --disable MODULE_SIG_ALL
     ./scripts/config --disable SYSTEM_TRUSTED_KEYRING
     ./scripts/config --disable SYSTEM_REVOCATION_LIST
-    
-    sed -i 's/CONFIG_SYSTEM_TRUSTED_KEYS=.*/CONFIG_SYSTEM_TRUSTED_KEYS=""/g' .config 2>/dev/null || true
-    sed -i 's/CONFIG_SYSTEM_REVOCATION_KEYS=.*/CONFIG_SYSTEM_REVOCATION_KEYS=""/g' .config 2>/dev/null || true
-    sed -i 's/CONFIG_MODULE_SIG_KEY=.*/CONFIG_MODULE_SIG_KEY=""/g' .config 2>/dev/null || true
-    
     ./scripts/config --disable DEBUG_INFO
-    ./scripts/config --disable DEBUG_INFO_BTF
-    ./scripts/config --disable DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
     
-    info "重新对齐最终无污染配置..."
-    yes "" | make olddefconfig >/dev/null 2>&1 || true
+    sed -i 's/CONFIG_SYSTEM_TRUSTED_KEYS=.*/CONFIG_SYSTEM_TRUSTED_KEYS=""/g' .config
+    sed -i 's/CONFIG_SYSTEM_REVOCATION_KEYS=.*/CONFIG_SYSTEM_REVOCATION_KEYS=""/g' .config
 
-    title "=== [6/8] 释放 CPU 算力，开启内核原生 Forge 锻造模式 ==="
-    info "分配编译并发线程数: $THREADS"
-    
+    yes "" | make olddefconfig >/dev/null 2>&1
+
+    title "=== [5/5] 开始执行多线程编译 ==="
+    info "分配并发线程数: $THREADS"
     if ! make -j"$THREADS"; then
-        error "编译线程彻底崩塌！请排查物理内存是否溢出。"
-        local _p=""
-        read -rp "按 Enter 返回主菜单..." _p || true
+        error "编译崩溃！请检查物理内存是否溢出或依赖缺失。"
+        read -rp "按 Enter 返回主菜单..." _p
         return 1
     fi
 
-    title "=== [7/8] 校验引导区容量并挂载核心模块 ==="
-    
-    local boot_free
-    boot_free=$(df -m /boot 2>/dev/null | awk 'NR==2 {print $4}' || echo "0")
-    
-    if test "$boot_free" -lt 200 2>/dev/null; then
-        error "致命拦截：/boot 引导扇区剩余空间 ($boot_free MB) 严重不足！编译主动熔断！"
-        local _p=""
-        read -rp "按 Enter 返回主菜单..." _p || true
-        return 1
-    fi
-    
-    info "/boot 扇区空间充足 ($boot_free MB)，准许启动扇区安装..."
-    
     make modules_install
     make install
 
-    local NEW_KERNEL_VER
-    NEW_KERNEL_VER=$(make -s kernelrelease 2>/dev/null || echo "")
-    
-    if test -n "$NEW_KERNEL_VER"; then
-        print_magenta ">>> 为新内核 $NEW_KERNEL_VER 强制生成底层 Initramfs 镜像驱动..."
-        if command -v update-initramfs >/dev/null 2>&1; then
-            update-initramfs -c -k "$NEW_KERNEL_VER" || true
-        elif command -v dracut >/dev/null 2>&1; then
-            dracut --force "/boot/initramfs-${NEW_KERNEL_VER}.img" "$NEW_KERNEL_VER" || true
+    local NEW_KERNEL_VER=$(make -s kernelrelease)
+    if [[ -n "$NEW_KERNEL_VER" ]]; then
+        if command -v update-initramfs >/dev/null; then
+            update-initramfs -c -k "$NEW_KERNEL_VER"
         fi
     fi
 
-    title "=== [8/8] 刷新系统引导器并销毁编译垃圾 ==="
+    command -v update-grub >/dev/null && update-grub
     
-    if command -v update-grub >/dev/null 2>&1; then
-        update-grub || true
-    elif command -v update-grub2 >/dev/null 2>&1; then
-        update-grub2 || true
-    elif command -v grub-mkconfig >/dev/null 2>&1; then
-        grub-mkconfig -o /boot/grub/grub.cfg || true
-    fi
-
     cd /
-    rm -rf "$BUILD_DIR/linux-"* 2>/dev/null || true
-    rm -rf "$BUILD_DIR/xanmod-"* 2>/dev/null || true
-
-    info "奇迹再现！纯血版 Xanmod 源码内核编译与 Initramfs 挂载全部顺利结束。"
-    warn "老系统将在 15 秒钟内物理退役，请等待自动重启..."
+    rm -rf "$BUILD_DIR/linux-"* "$BUILD_DIR/xanmod-"*
+    
+    info "源码编译顺利结束！15 秒后自动重启..."
     sleep 15
     reboot
 }
