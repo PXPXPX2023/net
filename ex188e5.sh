@@ -856,7 +856,7 @@ check_and_create_1gb_swap() {
 }
 
 # ------------------------------------------------------------------------------
-# [ 0x07: 官方预编译 XANMOD 部署模块 - 全新官方源与智能降级引擎 ]
+# [ 0x07: 官方预编译 XANMOD 部署模块 - 容错智能降级与 APT 寻址引擎 ]
 # ------------------------------------------------------------------------------
 
 do_install_xanmod_main_official() {
@@ -896,8 +896,8 @@ do_install_xanmod_main_official() {
     fi
     
     if test -z "$cpu_level"; then
-        cpu_level=2 # 官方已大量下线 v1 包，默认保底升级为 v2 架构以避免 404
-        warn "未能精确检测 CPU 微架构级别，将默认使用基础 v2 兼容版本。"
+        cpu_level=2
+        warn "未能精确检测 CPU 微架构级别，将默认降级使用系统最宽容的 v2 兼容版本。"
     else
         info "评估完成，当前 CPU 硬件完美支持的微架构最高级别为: v${cpu_level}"
     fi
@@ -906,27 +906,26 @@ do_install_xanmod_main_official() {
     
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y >/dev/null 2>&1 || true
-    apt-get install -y gnupg gnupg2 curl sudo wget e2fsprogs ca-certificates lsb-release >/dev/null 2>&1 || true
+    apt-get install -y gnupg gnupg2 curl sudo wget e2fsprogs ca-certificates >/dev/null 2>&1 || true
 
-    # 【终极修复 1：采用 ASCII armored 直通导入，避开精简系统 gpg dearmor 报错】
+    # 【核心修复 1：Debian 11 兼容 GPG 格式，确保源列表被正确识别】
     mkdir -p /usr/share/keyrings 2>/dev/null || true
     rm -f /etc/apt/trusted.gpg.d/xanmod-kernel.gpg /etc/apt/sources.list.d/xanmod-kernel.list /etc/apt/sources.list.d/xanmod-release.list 2>/dev/null || true
     
-    if ! wget -qO - https://dl.xanmod.org/archive.key | tee /usr/share/keyrings/xanmod-archive-keyring.asc >/dev/null 2>&1; then
+    if ! curl -fsSL https://dl.xanmod.org/archive.key | gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg --yes 2>/dev/null; then
         error "从远端获取 GPG 密钥链发生错误，官方源可能受限！"
         return 1
     fi
     
-    echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.asc] http://deb.xanmod.org releases main' > /etc/apt/sources.list.d/xanmod-release.list
+    echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' > /etc/apt/sources.list.d/xanmod-release.list
 
-    print_magenta ">>> [3/4] 正在触发 APT 智能降级寻址阵列..."
+    print_magenta ">>> [3/4] 正在触发 APT 智能降级寻址阵列 (实时同步中)..."
     
-    # 强制刷新源列表，捕获最新包单
-    apt-get update -y >/dev/null 2>&1 || true
+    # 开放输出，确保源加载不被挂起
+    apt-get update || warn "APT 源刷新遇到网络异常，可能影响下一步寻址。"
     
     local pkg_name=""
     set +e
-    # 采用高精度降级寻址算法：如果 v3 找不到，自动向下找 v2，规避官方清空老包的断层
     for v in $(seq "$cpu_level" -1 1); do
         local try_pkg="linux-xanmod-x64v${v}"
         if apt-cache show "$try_pkg" >/dev/null 2>&1; then
@@ -943,7 +942,6 @@ do_install_xanmod_main_official() {
     
     if test -z "$pkg_name"; then
         error "保底寻址宣告失败！当前系统源无法解析到任何合法的 Xanmod 预编译包。"
-        error "这通常意味着您的系统版本(如 Debian 10 / Ubuntu 18.04)已被官方彻底抛弃。"
         local _pause=""
         read -rp "按 Enter 继续..." _pause || true
         return 1
@@ -954,7 +952,7 @@ do_install_xanmod_main_official() {
     print_magenta ">>> [4/4] 正在向主系统强行注入战舰级内核: $pkg_name ..."
     
     if ! apt-get install -y "$pkg_name"; then
-        error "内核部署被系统 APT 进程拦截。请排查物理网络环境与包冲突！"
+        error "保底安装宣告失败，内核替换进程中止。请排查物理网络环境与 APT 源配置！"
         local _pause=""
         read -rp "按 Enter 继续..." _pause || true
         return 1
@@ -1100,19 +1098,16 @@ do_xanmod_compile() {
         make defconfig >/dev/null 2>&1 || true
     fi
     
+    # 【核心修复 2：物理篡改 Makefile，斩断 x86-64-v 架构参数断层】
+    info "物理破坏源文件中的架构检查逻辑，防止 GCC 参数畸形..."
+    sed -i 's/-march=x86-64-v$(CONFIG_X86_64_VERSION)/-march=x86-64-v2/g' arch/x86/Makefile 2>/dev/null || true
+    
     info "正在抹平新老内核代差，执行首次静默对齐..."
     yes "" | make olddefconfig >/dev/null 2>&1 || true
     make scripts >/dev/null 2>&1 || true
     
-    # 【终极修复 2：物理铲除 Xanmod 的 Makefile CPU 架构 Bug】
-    info "正在强行抹除 Xanmod 不兼容的 GCC -march 架构后缀..."
-    sed -i '/CONFIG_X86_64_VERSION/d' .config 2>/dev/null || true
-    ./scripts/config --undefine X86_64_VERSION
-    ./scripts/config --disable X86_64_V1
-    ./scripts/config --disable X86_64_V2
-    ./scripts/config --disable X86_64_V3
-    ./scripts/config --disable X86_64_V4
-    ./scripts/config --enable GENERIC_CPU
+    ./scripts/config --set-val X86_64_VERSION 2
+    ./scripts/config --enable X86_64_V2
     
     info "注入 KVM/Xen 底层虚拟化驱动映射层 (VIRTIO)..."
     ./scripts/config --enable VIRTIO
@@ -1203,320 +1198,6 @@ do_xanmod_compile() {
 
     info "奇迹再现！纯血版 Xanmod 源码内核编译与 Initramfs 挂载全部顺利结束。"
     warn "老系统将在 15 秒钟内物理退役，请等待自动重启..."
-    sleep 15
-    reboot
-}
-# ------------------------------------------------------------------------------
-# [ 0x09: 系统内核网络栈极限压榨 (V62 全量 60+ 项网络栈阵列调优) ]
-# ------------------------------------------------------------------------------
-
-do_perf_tuning() {
-    title "极客压榨：全域系统底层网络栈结构重塑"
-    warn "警告: 此操作将深度注入内核级极限并发参数，执行完毕必须重启宿主机！"
-    
-    local confirm=""
-    read -rp "确定要继续吗？(y/n): " confirm || true
-    if test "$confirm" != "y"; then
-        if test "$confirm" != "Y"; then
-            return
-        fi
-    fi
-    
-    local current_scale
-    current_scale=$(sysctl -n net.ipv4.tcp_adv_win_scale 2>/dev/null || echo "1")
-    local current_app
-    current_app=$(sysctl -n net.ipv4.tcp_app_win 2>/dev/null || echo "31")
-    
-    echo -e "  当前 tcp_adv_win_scale: ${cyan}${current_scale}${none} (建议 1 或 2)"
-    echo -e "  当前 tcp_app_win: ${cyan}${current_app}${none} (建议 31)"
-    
-    local new_scale=""
-    read -rp "设置 tcp_adv_win_scale (-2 到 2，直接回车保留当前): " new_scale || true
-    if test -z "$new_scale"; then new_scale="$current_scale"; fi
-    
-    local new_app=""
-    read -rp "设置 tcp_app_win (1 到 31，直接回车保留当前): " new_app || true
-    if test -z "$new_app"; then new_app="$current_app"; fi
-
-    info "清理历史及冗余的网络优化配置..."
-    systemctl stop net-speeder >/dev/null 2>&1 || true
-    killall net-speeder >/dev/null 2>&1 || true
-    systemctl disable net-speeder >/dev/null 2>&1 || true
-    rm -f /etc/systemd/system/net-speeder.service 2>/dev/null || true
-    systemctl daemon-reload >/dev/null 2>&1 || true
-
-    truncate -s 0 /etc/sysctl.conf 2>/dev/null || true
-    truncate -s 0 /etc/sysctl.d/99-sysctl.conf 2>/dev/null || true
-    truncate -s 0 /etc/sysctl.d/99-network-optimized.conf 2>/dev/null || true
-    rm -f /etc/sysctl.d/99-bbr*.conf /etc/sysctl.d/99-ipv6-disable.conf /etc/sysctl.d/99-pro*.conf /usr/lib/sysctl.d/50-pid-max.conf 2>/dev/null || true
-    
-    info "配置系统高并发进程限制 (Limits)..."
-    cat > /etc/security/limits.conf << 'EOF'
-root soft nofile 1000000
-root hard nofile 1000000
-root soft nproc 1000000
-root hard nproc 1000000
-* soft nofile 1000000
-* hard nofile 1000000
-* soft nproc 1000000
-* hard nproc 1000000
-EOF
-
-    if ! grep -q "pam_limits.so" /etc/pam.d/common-session 2>/dev/null; then
-        echo "session required pam_limits.so" >> /etc/pam.d/common-session
-    fi
-    if ! grep -q "pam_limits.so" /etc/pam.d/common-session-noninteractive 2>/dev/null; then
-        echo "session required pam_limits.so" >> /etc/pam.d/common-session-noninteractive
-    fi
-    
-    sed -i '/DefaultLimitNOFILE/d' /etc/systemd/system.conf 2>/dev/null || true
-    sed -i '/DefaultLimitNPROC/d' /etc/systemd/system.conf 2>/dev/null || true
-    echo "DefaultLimitNOFILE=1000000" >> /etc/systemd/system.conf
-    echo "DefaultLimitNPROC=1000000" >> /etc/systemd/system.conf
-
-    local target_qdisc="fq"
-    local cake_state="false"
-    if sysctl net.core.default_qdisc 2>/dev/null | grep -q 'cake'; then cake_state="true"; fi
-    if test "$cake_state" = "true"; then target_qdisc="cake"; fi
-
-    info "写入内核 Sysctl 参数..."
-    cat > /etc/sysctl.d/99-network-optimized.conf << EOF
-net.core.default_qdisc = ${target_qdisc}
-net.ipv4.tcp_congestion_control = bbr
-net.ipv4.neigh.default.base_reachable_time_ms = 60000
-net.ipv4.neigh.default.mcast_solicit = 2
-net.ipv4.neigh.default.retrans_time_ms = 500
-net.ipv4.conf.all.rp_filter = 0
-net.ipv4.conf.default.rp_filter = 0
-net.ipv4.tcp_no_metrics_save = 1
-net.ipv4.tcp_ecn = 1
-net.ipv4.tcp_ecn_fallback = 1
-net.ipv4.tcp_mtu_probing = 1
-net.ipv4.tcp_rfc1337 = 1
-net.ipv4.tcp_sack = 1
-net.ipv4.tcp_window_scaling = 1
-net.ipv4.tcp_adv_win_scale = ${new_scale}
-net.ipv4.tcp_app_win = ${new_app}
-net.ipv4.tcp_moderate_rcvbuf = 1
-net.core.rmem_default = 560576
-net.core.wmem_default = 560576
-net.core.rmem_max = 21699928
-net.core.wmem_max = 21699928
-net.ipv4.tcp_rmem = 4096 760576 21699928
-net.ipv4.tcp_wmem = 4096 760576 21699928
-net.ipv4.udp_rmem_min = 4096
-net.ipv4.udp_wmem_min = 4096
-net.core.dev_weight = 64
-net.core.dev_weight_tx_bias = 1
-net.core.dev_weight_rx_bias = 1
-net.core.netdev_budget = 300
-vm.swappiness = 1
-fs.file-max = 1048576
-fs.nr_open = 1048576
-fs.inotify.max_user_instances = 262144
-net.ipv4.tcp_syncookies = 1
-net.ipv4.tcp_fin_timeout = 12
-net.ipv4.tcp_keepalive_probes = 5
-net.ipv4.tcp_keepalive_time = 60
-net.ipv4.tcp_keepalive_intvl = 30
-net.ipv4.tcp_tw_reuse = 1
-net.ipv4.tcp_abort_on_overflow = 0
-net.ipv4.ip_local_port_range = 1024 65535
-net.ipv4.tcp_max_syn_backlog = 65535
-net.ipv4.tcp_max_tw_buckets = 262144
-net.ipv4.tcp_retries1 = 5
-net.ipv4.tcp_retries2 = 8
-net.ipv4.tcp_syn_retries = 3
-net.ipv4.tcp_synack_retries = 2
-net.core.somaxconn = 65535
-net.core.netdev_max_backlog = 65535
-net.ipv4.tcp_timestamps = 1
-net.ipv4.tcp_max_orphans = 262144
-net.core.optmem_max = 3276800
-net.ipv4.tcp_fastopen = 3
-net.ipv4.tcp_reordering = 3
-net.ipv4.tcp_autocorking = 0
-net.ipv4.tcp_tso_win_divisor = 6
-kernel.pid_max = 4194304
-kernel.threads-max = 85536
-net.ipv4.neigh.default.gc_thresh1 = 1024
-net.ipv4.neigh.default.gc_thresh2 = 4096
-net.ipv4.neigh.default.gc_thresh3 = 8192
-net.ipv4.neigh.default.gc_stale_time = 100
-net.ipv4.conf.default.arp_announce = 2
-net.ipv4.conf.lo.arp_announce = 2
-net.ipv4.conf.all.arp_announce = 2
-net.unix.max_dgram_qlen = 130000
-net.core.busy_poll = 50
-net.core.busy_read = 0
-net.ipv4.tcp_notsent_lowat = 16384
-vm.vfs_cache_pressure = 10
-net.ipv4.conf.all.send_redirects = 0
-net.ipv4.conf.all.accept_redirects = 0
-net.ipv4.conf.all.accept_source_route = 0
-net.ipv4.ip_forward = 1
-net.ipv4.conf.all.arp_ignore = 1
-net.ipv4.tcp_early_retrans = 3
-net.ipv4.neigh.default.unres_qlen = 35535
-net.ipv4.conf.all.route_localnet = 0
-net.ipv4.tcp_orphan_retries = 8
-net.ipv4.conf.all.forwarding = 1
-net.ipv4.ipfrag_max_dist = 32
-net.ipv4.ipfrag_secret_interval = 200
-net.ipv4.ipfrag_low_thresh = 42008868
-net.ipv4.ipfrag_high_thresh = 104917729
-net.ipv4.ipfrag_time = 30
-fs.aio-max-nr = 262144
-kernel.msgmax = 655350
-kernel.msgmnb = 655350
-net.ipv4.neigh.default.proxy_qlen = 50000
-net.ipv4.tcp_pacing_ca_ratio = 150
-net.ipv4.tcp_pacing_ss_ratio = 210
-fs.protected_fifos = 1
-fs.protected_hardlinks = 1
-fs.protected_regular = 2
-fs.protected_symlinks = 1
-net.core.rps_sock_flow_entries = 131072
-net.core.flow_limit_table_len = 131072
-net.ipv4.tcp_workaround_signed_windows = 1
-vm.dirty_ratio = 35
-vm.overcommit_memory = 0
-kernel.sysrq = 1
-net.ipv6.conf.all.disable_ipv6 = 1
-net.ipv6.conf.default.disable_ipv6 = 1
-net.ipv6.conf.lo.disable_ipv6 = 1
-vm.max_map_count = 65535
-net.ipv4.tcp_child_ehash_entries = 65535
-net.ipv4.ip_no_pmtu_disc = 0
-net.ipv4.tcp_stdurg = 0
-net.ipv4.tcp_challenge_ack_limit = 1200
-net.ipv4.tcp_comp_sack_delay_ns = 50000
-net.ipv4.tcp_comp_sack_nr = 1
-net.ipv4.tcp_fwmark_accept = 1
-net.ipv4.tcp_invalid_ratelimit = 800
-net.ipv4.tcp_l3mdev_accept = 1
-net.core.tstamp_allow_data = 1
-net.core.netdev_tstamp_prequeue = 1
-kernel.randomize_va_space = 2
-net.ipv4.tcp_mem = 65536 131072 262144
-net.ipv4.udp_mem = 65536 131072 262144
-net.ipv4.tcp_recovery = 0x1
-net.ipv4.tcp_dsack = 1
-kernel.shmmax = 67108864
-kernel.shmall = 16777216
-net.ipv4.icmp_echo_ignore_broadcasts = 1
-net.ipv4.icmp_ignore_bogus_error_responses = 1
-net.ipv4.tcp_limit_output_bytes = 1310720
-net.ipv4.tcp_min_tso_segs = 1
-net.ipv4.tcp_thin_linear_timeouts = 0
-net.ipv4.tcp_early_demux = 1
-net.ipv4.tcp_shrink_window = 0
-net.ipv4.neigh.default.unres_qlen_bytes = 65535
-kernel.printk = 3 4 1 3
-kernel.sched_autogroup_enabled = 0
-EOF
-
-    if ! sysctl -p /etc/sysctl.d/99-network-optimized.conf >/dev/null 2>&1; then
-        error "Sysctl 参数应用存在错误，部分硬件或系统环境不支持。"
-        local _p=""
-        read -rp "按 Enter 返回菜单..." _p || true
-        return 1
-    else
-        info "所有底层 Sysctl 参数已成功应用。"
-    fi
-    
-    local IFACE
-    IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
-    
-    if test -n "$IFACE"; then
-        info "配置网卡驱动硬件卸载与 CPU 软中断分发 ($IFACE)..."
-        
-        cat > /usr/local/bin/nic-optimize.sh <<'EONIC'
-#!/bin/bash
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
-if test -n "$IFACE"; then
-    ethtool -K "$IFACE" lro off rx-gro-hw off 2>/dev/null || true
-    ethtool -C "$IFACE" adaptive-rx off rx-usecs 0 tx-usecs 0 2>/dev/null || true
-fi
-EONIC
-        chmod +x /usr/local/bin/nic-optimize.sh
-        
-        cat > /etc/systemd/system/nic-optimize.service << 'EOSERVICE'
-[Unit]
-Description=NIC Advanced Tuning
-After=network.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/nic-optimize.sh
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
-EOSERVICE
-
-        systemctl daemon-reload >/dev/null 2>&1 || true
-        systemctl enable nic-optimize.service >/dev/null 2>&1 || true
-        systemctl start nic-optimize.service >/dev/null 2>&1 || true
-        
-        cat > /usr/local/bin/rps-optimize.sh <<'EOF_RPS'
-#!/bin/bash
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
-if test -z "$IFACE"; then 
-    exit 0
-fi
-
-CPU=$(nproc 2>/dev/null || echo 1)
-CPU_MASK=$(printf "%x" $(( (1<<CPU)-1 )))
-RX_QUEUES=$(ls -d /sys/class/net/"$IFACE"/queues/rx-* 2>/dev/null | wc -l || echo 0)
-
-for RX in /sys/class/net/"$IFACE"/queues/rx-*; do
-    if test -w "$RX/rps_cpus"; then
-        echo "$CPU_MASK" > "$RX/rps_cpus" 2>/dev/null || true
-    fi
-done
-
-for TX in /sys/class/net/"$IFACE"/queues/tx-*; do
-    if test -w "$TX/xps_cpus"; then
-        echo "$CPU_MASK" > "$TX/xps_cpus" 2>/dev/null || true
-    fi
-done
-
-sysctl -w net.core.rps_sock_flow_entries=131072 >/dev/null 2>&1 || true
-
-if test "$RX_QUEUES" -gt 0 2>/dev/null; then
-    FLOW_PER_QUEUE=$((65535 / RX_QUEUES))
-    for RX in /sys/class/net/"$IFACE"/queues/rx-*; do
-        if test -w "$RX/rps_flow_cnt"; then
-            echo "$FLOW_PER_QUEUE" > "$RX/rps_flow_cnt" 2>/dev/null || true
-        fi
-    done
-fi
-EOF_RPS
-        chmod +x /usr/local/bin/rps-optimize.sh
-        
-        cat > /etc/systemd/system/rps-optimize.service << 'EOF_RPS_SRV'
-[Unit]
-Description=RPS RFS Network CPU Distribution
-After=network.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/rps-optimize.sh
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
-EOF_RPS_SRV
-
-        systemctl daemon-reload >/dev/null 2>&1 || true
-        systemctl enable rps-optimize.service >/dev/null 2>&1 || true
-        systemctl start rps-optimize.service >/dev/null 2>&1 || true
-    fi
-
-    info "网络栈参数应用完成，系统将在 15 秒后重启..."
     sleep 15
     reboot
 }
