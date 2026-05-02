@@ -934,7 +934,6 @@ do_install_xanmod_main_official() {
         read -rp "按 Enter 继续..." _pause || true
         return 1
     fi
-    done
     
     if test -z "$pkg_name"; then
         warn "标准架构包名全线脱靶，正在唤醒 APT 模糊寻址雷达..."
