@@ -2190,3 +2190,793 @@ do_app_level_tuning_menu() {
         esac
     done
 }
+# ------------------------------------------------------------------------------
+# [ 0x0F: 全域无损对齐化多维用户组阵列 (8 行标准对齐) ]
+# ------------------------------------------------------------------------------
+
+print_node_block() {
+    local protocol="$1" ip="$2" port="$3" sni="$4" pbk="$5" shortid="$6" utls="$7" uuid="$8"
+    printf "  ${yellow}%-15s${none} : %s\n" "协议框架" "$protocol"
+    printf "  ${yellow}%-15s${none} : %s\n" "外网IP" "$ip"
+    printf "  ${yellow}%-15s${none} : %s\n" "端口" "$port"
+    printf "  ${yellow}%-15s${none} : %s\n" "用户 UUID" "$uuid"
+    printf "  ${yellow}%-15s${none} : %s\n" "伪装SNI" "${sni:-缺失}"
+    printf "  ${yellow}%-15s${none} : %s\n" "公钥(pbk)" "${pbk:-缺失}"
+    printf "  ${yellow}%-15s${none} : %s\n" "ShortId" "${shortid:-缺失}"
+    printf "  ${yellow}%-15s${none} : %s\n" "uTLS引擎" "$utls"
+}
+
+do_summary() {
+    if test ! -f "$CONFIG"; then return; fi
+    title "系统连接信息详情分发面板"
+    
+    local ip=$(_get_ip || echo "获取失败")
+    local vless_inbound=$(jq -c '.inbounds[]? | select(.protocol=="vless")' "$CONFIG" 2>/dev/null | head -n 1 || echo "")
+    
+    if test -n "$vless_inbound" && test "$vless_inbound" != "null"; then
+        local pbk=$(echo "$vless_inbound" | jq -r '.streamSettings.realitySettings.publicKey // "缺失"' 2>/dev/null || echo "缺失")
+        local main_sni=$(echo "$vless_inbound" | jq -r '.streamSettings.realitySettings.serverNames[0] // "缺失"' 2>/dev/null || echo "缺失")
+        local port=$(echo "$vless_inbound" | jq -r '.port // 443' 2>/dev/null || echo 443)
+        local shortIds_json=$(echo "$vless_inbound" | jq -c '.streamSettings.realitySettings.shortIds' 2>/dev/null || echo "[]")
+        local clients_json=$(echo "$vless_inbound" | jq -c '.settings.clients[]?' 2>/dev/null || echo "")
+
+        local idx=0
+        while read -r client; do
+            if test -z "$client"; then break; fi
+            local uuid=$(echo "$client" | jq -r '.id' 2>/dev/null || echo "")
+            local remark=$(echo "$client" | jq -r '.email // "无备注"' 2>/dev/null || echo "无备注")
+            local target_sni=$(grep "^$uuid|" "$USER_SNI_MAP" 2>/dev/null | cut -d'|' -f2 || echo "")
+            if test -z "$target_sni"; then target_sni="$main_sni"; fi
+            
+            local sid=$(echo "$shortIds_json" | jq -r ".[$idx] // \"缺失\"" 2>/dev/null || echo "缺失")
+            
+            hr
+            print_green ">>> 账户持有人: $remark"
+            print_node_block "VLESS-Reality (Vision)" "$ip" "$port" "$target_sni" "$pbk" "$sid" "chrome" "$uuid"
+            local link="vless://${uuid}@${ip}:${port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${target_sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#${remark}"
+            echo -e "\n  ${cyan}通用导入链接:${none}\n  $link\n"
+            if command -v qrencode >/dev/null 2>&1; then qrencode -m 2 -t UTF8 "$link"; fi
+            idx=$((idx + 1))
+        done <<< "$clients_json"
+    fi
+
+    local ss_inbound=$(jq -c '.inbounds[]? | select(.protocol=="shadowsocks")' "$CONFIG" 2>/dev/null | head -n 1 || echo "")
+    if test -n "$ss_inbound" && test "$ss_inbound" != "null"; then
+        local s_port=$(echo "$ss_inbound" | jq -r '.port' 2>/dev/null || echo 8388)
+        local s_pass=$(echo "$ss_inbound" | jq -r '.settings.password' 2>/dev/null || echo "")
+        local s_method=$(echo "$ss_inbound" | jq -r '.settings.method' 2>/dev/null || echo "aes-256-gcm")
+        
+        hr
+        print_green ">>> 极简回退通道: Shadowsocks"
+        print_node_block "Shadowsocks" "$ip" "$s_port" "【直连架构】" "【不兼容】" "【不兼容】" "$s_method" "$s_pass"
+        local b64=$(printf '%s:%s' "$s_method" "$s_pass" | base64 | tr -d '\n\r' || echo "")
+        local link_ss="ss://${b64}@${ip}:${s_port}#${REMARK_NAME}-SS"
+        echo -e "\n  ${cyan}通用导入链接:${none}\n  $link_ss\n"
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x11: 多用户与安全黑洞管理器 ]
+# ------------------------------------------------------------------------------
+
+do_user_manager() {
+    while true; do
+        title "账户生命周期与凭证管理器"
+        if test ! -f "$CONFIG"; then error "系统中没有可用配置。"; return; fi
+        
+        local clients=$(jq -r '.inbounds[]? | select(.protocol=="vless") | .settings?.clients[]? | .id + "|" + (.email // "未命名")' "$CONFIG" 2>/dev/null || echo "")
+        if test -z "$clients" || test "$clients" = "null"; then 
+            error "未能在配置库中找到 VLESS 用户名单。"
+            local _p=""; read -rp "按 Enter 返回..." _p || true; return
+        fi
+        
+        local tmp_users="/tmp/xray_users_$$.txt"
+        echo "$clients" | awk -F'|' '{print NR"|"$1"|"$2}' > "$tmp_users" || true
+        
+        echo -e "当前系统下放的用户列表："
+        while IFS='|' read -r num uid remark; do
+            local utime=$(grep "^$uid|" "$USER_TIME_MAP" 2>/dev/null | cut -d'|' -f2 || echo "")
+            if test -z "$utime"; then utime="历史用户/未知时间"; fi
+            echo -e "  $num) 备注: ${cyan}$remark${none} | 录入时间: ${gray}$utime${none} | ID: ${yellow}$uid${none}"
+        done < "$tmp_users"
+        hr
+        
+        echo "  a) 注册全新子用户凭证"
+        echo "  m) 无缝导入外部历史用户"
+        echo "  s) 为用户指定专用的伪装域名 (SNI)"
+        echo "  d) 销毁指定用户的授权"
+        echo "  q) 取消并退出"
+        
+        local uopt=""; read -rp "输入操作指令: " uopt || true
+        local ip=$(_get_ip || echo "获取失败")
+        
+        if test "$uopt" = "a" || test "$uopt" = "A"; then
+            local nu=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || "$XRAY_BIN" uuid)
+            local ns=$(head -c 8 /dev/urandom | xxd -p | tr -d '\n\r' || echo "")
+            local ctime=$(date +"%Y-%m-%d %H:%M")
+            local u_remark=""; read -rp "请指定新用户备注 (默认 User-$ns): " u_remark || true
+            if test -z "$u_remark"; then u_remark="User-${ns}"; fi
+            
+            cat > /tmp/new_client.json <<EOF
+{ "id": "$nu", "flow": "xtls-rprx-vision", "email": "$u_remark" }
+EOF
+            _safe_jq_write --argjson new_client "$(< /tmp/new_client.json)" '(.inbounds[]? | select(.protocol == "vless")) |= (.settings.clients += [$new_client])'
+            _safe_jq_write --arg sid "$ns" '(.inbounds[]? | select(.protocol == "vless")) |= (.streamSettings.realitySettings.shortIds += [$sid])'
+            rm -f /tmp/new_client.json 2>/dev/null || true
+            echo "$nu|$ctime" >> "$USER_TIME_MAP"
+            ensure_xray_is_alive
+            
+            local vless_node=$(jq -c '.inbounds[]? | select(.protocol=="vless")' "$CONFIG" 2>/dev/null | head -n 1 || echo "")
+            local port=$(echo "$vless_node" | jq -r '.port' 2>/dev/null || echo 443)
+            local sni=$(echo "$vless_node" | jq -r '.streamSettings.realitySettings.serverNames[0]' 2>/dev/null || echo "")
+            local pub=$(echo "$vless_node" | jq -r '.streamSettings.realitySettings.publicKey' 2>/dev/null || echo "")
+            
+            info "新用户注册通过。"
+            hr
+            print_green ">>> 获得授权的新节点信息: $u_remark"
+            print_node_block "VLESS-Reality (Vision)" "$ip" "$port" "$sni" "$pub" "$ns" "chrome" "$nu"
+            local link="vless://${nu}@${ip}:${port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${sni}&fp=chrome&pbk=${pub}&sid=${ns}&type=tcp#${u_remark}"
+            echo -e "\n  ${cyan}专属导入链接:${none}\n  $link\n"
+            local _p=""; read -rp "按 Enter 继续..." _p || true
+            
+        elif test "$uopt" = "m" || test "$uopt" = "M"; then
+            local m_remark=""; read -rp "请指定导入的账户备注 (默认 Imported): " m_remark || true
+            if test -z "$m_remark"; then m_remark="Imported"; fi
+            local m_uuid=""; read -rp "请输入源账户的 UUID: " m_uuid || true
+            if test -z "$m_uuid"; then error "UUID 信息为空！"; continue; fi
+            local m_sid=""; read -rp "请输入源账户的 ShortId: " m_sid || true
+            if test -z "$m_sid"; then error "ShortId 信息为空！"; continue; fi
+            
+            local ctime=$(date +"%Y-%m-%d %H:%M")
+            cat > /tmp/new_client.json <<EOF
+{ "id": "$m_uuid", "flow": "xtls-rprx-vision", "email": "$m_remark" }
+EOF
+            _safe_jq_write --argjson new_client "$(< /tmp/new_client.json)" '(.inbounds[]? | select(.protocol == "vless")) |= (.settings.clients += [$new_client])'
+            _safe_jq_write --arg sid "$m_sid" '(.inbounds[]? | select(.protocol == "vless")) |= (.streamSettings.realitySettings.shortIds += [$sid])'
+            rm -f /tmp/new_client.json 2>/dev/null || true
+            echo "$m_uuid|$ctime" >> "$USER_TIME_MAP"
+            
+            local m_sni=""; read -rp "锁定独立伪装 SNI 域 (回车套用主线设定): " m_sni || true
+            if test -n "$m_sni"; then
+                _safe_jq_write --arg sni "$m_sni" '(.inbounds[]? | select(.protocol == "vless")) |= (.streamSettings.realitySettings.serverNames += [$sni] | .streamSettings.realitySettings.serverNames |= unique)'
+                sed -i "/^$m_uuid|/d" "$USER_SNI_MAP" 2>/dev/null || true
+                echo "$m_uuid|$m_sni" >> "$USER_SNI_MAP"
+                info "底层伪装锚定成功: $m_sni"
+            else
+                m_sni=$(jq -r '.inbounds[]? | select(.protocol=="vless") | .streamSettings.realitySettings.serverNames[0] // empty' "$CONFIG" 2>/dev/null | head -n 1 || echo "")
+            fi
+            ensure_xray_is_alive
+            
+            local vless_node=$(jq -c '.inbounds[]? | select(.protocol=="vless")' "$CONFIG" 2>/dev/null | head -n 1 || echo "")
+            local port=$(echo "$vless_node" | jq -r '.port' 2>/dev/null || echo 443)
+            local pub=$(echo "$vless_node" | jq -r '.streamSettings.realitySettings.publicKey' 2>/dev/null || echo "")
+            
+            info "历史权限挂载验证完成。"
+            hr
+            print_node_block "VLESS-Reality (Vision)" "$ip" "$port" "$m_sni" "$pub" "$m_sid" "chrome" "$m_uuid"
+            local link="vless://${m_uuid}@${ip}:${port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${m_sni}&fp=chrome&pbk=${pub}&sid=${m_sid}&type=tcp#${m_remark}"
+            echo -e "\n  ${cyan}配置重组链:${none}\n  $link\n"
+            local _p=""; read -rp "按 Enter 继续..." _p || true
+            
+        elif test "$uopt" = "s" || test "$uopt" = "S"; then
+            local snum=""; read -rp "目标序号: " snum || true
+            local target_uuid=$(awk -F'|' -v id="${snum:-0}" '$1==id {print $2}' "$tmp_users" 2>/dev/null || echo "")
+            local target_remark=$(awk -F'|' -v id="${snum:-0}" '$1==id {print $3}' "$tmp_users" 2>/dev/null || echo "")
+            if test -n "$target_uuid"; then
+                local u_sni=""; read -rp "强制重定向 SNI: " u_sni || true
+                if test -n "$u_sni"; then
+                    _safe_jq_write --arg sni "$u_sni" '(.inbounds[]? | select(.protocol == "vless")) |= (.streamSettings.realitySettings.serverNames += [$sni] | .streamSettings.realitySettings.serverNames |= unique)'
+                    sed -i "/^$target_uuid|/d" "$USER_SNI_MAP" 2>/dev/null || true
+                    echo "$target_uuid|$u_sni" >> "$USER_SNI_MAP"
+                    ensure_xray_is_alive
+                    info "$target_remark 面具替换完毕，新特征: $u_sni"
+                    local vless_node=$(jq -c '.inbounds[]? | select(.protocol=="vless")' "$CONFIG" 2>/dev/null | head -n 1 || echo "")
+                    local port=$(echo "$vless_node" | jq -r '.port' 2>/dev/null || echo 443)
+                    local idx=$((${snum:-0} - 1))
+                    local sid=$(echo "$vless_node" | jq -r ".streamSettings.realitySettings.shortIds[$idx] // empty" 2>/dev/null || echo "")
+                    local pub=$(echo "$vless_node" | jq -r '.streamSettings.realitySettings.publicKey // empty' 2>/dev/null || echo "")
+                    local link="vless://${target_uuid}@${ip}:${port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${u_sni}&fp=chrome&pbk=${pub}&sid=${sid}&type=tcp#${target_remark}"
+                    echo -e "\n  ${cyan}刷新下发链接:${none}\n  $link\n"
+                    local _p=""; read -rp "按 Enter 继续..." _p || true
+                fi
+            else 
+                error "无效寻址序号。"
+            fi
+            
+        elif test "$uopt" = "d" || test "$uopt" = "D"; then
+            local dnum=""; read -rp "下达强制吊销许可的序号: " dnum || true
+            local total=$(wc -l < "$tmp_users" 2>/dev/null || echo "0")
+            if test "${total:-0}" -le 1; then 
+                error "核心保护规则已触发：您不能注销唯一驻留节点账户！"
+            else
+                local target_uuid=$(awk -F'|' -v id="${dnum:-0}" '$1==id {print $2}' "$tmp_users" 2>/dev/null || echo "")
+                if test -n "$target_uuid"; then
+                    local idx=$((${dnum:-0} - 1))
+                    _safe_jq_write --arg uid "$target_uuid" --argjson i "$idx" '(.inbounds[]? | select(.protocol == "vless")) |= (.settings.clients |= map(select(.id != $uid)) | .streamSettings.realitySettings.shortIds |= del(.[$i]))'
+                    sed -i "/^$target_uuid|/d" "$USER_SNI_MAP" 2>/dev/null || true
+                    sed -i "/^$target_uuid|/d" "$USER_TIME_MAP" 2>/dev/null || true
+                    ensure_xray_is_alive
+                    info "权限网剥离成功，$target_uuid 所有相关连接口已永久关闭。"
+                fi
+            fi
+        elif test "$uopt" = "q" || test "$uopt" = "Q"; then 
+            rm -f "$tmp_users" 2>/dev/null || true
+            break
+        fi
+    done
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x12: 全局恶性阻断防火墙 (BT/Ads 过滤) ]
+# ------------------------------------------------------------------------------
+
+_global_block_rules() {
+    while true; do
+        title "安全防火墙体系设定"
+        if test ! -f "$CONFIG"; then error "环境未配置，请先构建主网络。"; return; fi
+        local bt_en=$(jq -r '.routing.rules[]? | select(.protocol != null) | select(.protocol | index("bittorrent")) | ._enabled // "false"' "$CONFIG" 2>/dev/null | head -n 1)
+        local ad_en=$(jq -r '.routing.rules[]? | select(.domain != null) | select(.domain | index("geosite:category-ads-all")) | ._enabled // "false"' "$CONFIG" 2>/dev/null | head -n 1)
+        
+        echo -e "  1) P2P/BT 数据链熔断             | 状态: ${yellow}${bt_en}${none}"
+        echo -e "  2) Geosite 黑名单与广告强屏障    | 状态: ${yellow}${ad_en}${none}"
+        echo "  0) 退出返回"
+        
+        local bc=""; read -rp "输入切换代号: " bc || true
+        case "${bc:-}" in
+            1) 
+                local nv="true"; if test "$bt_en" = "true"; then nv="false"; fi
+                _safe_jq_write --argjson nv_val "$nv" '(.routing.rules[]? | select(.protocol != null and (.protocol | index("bittorrent")))) |= (._enabled = $nv_val)'
+                ensure_xray_is_alive; info "BT 屏蔽属性已变更为: $nv" 
+                ;;
+            2) 
+                local nv="true"; if test "$ad_en" = "true"; then nv="false"; fi
+                _safe_jq_write --argjson nv_val "$nv" '(.routing.rules[]? | select(.domain != null and (.domain | index("geosite:category-ads-all")))) |= (._enabled = $nv_val)'
+                ensure_xray_is_alive; info "黑洞过滤系统修改为: $nv" 
+                ;;
+            0) return ;;
+        esac
+    done
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x13: 流量追踪审计与核心雷达 ]
+# ------------------------------------------------------------------------------
+
+do_status_menu() {
+    while true; do
+        clear
+        title "主控台: 监控及账单核心"
+        echo "  1) [系统守护] 追踪主线程服务健康率"
+        echo "  2) [全网穿透] 检测基础外网及监听位态"
+        echo "  3) [总计账单] 调取网卡出入核算账册 (vnstat)"
+        echo "  4) [雷达扫描] 实时反制追踪系统内部驻留连接 IP"
+        echo "  5) [底层微操] 人工赋予 Xray 高配内存抢占锁 (Nice)"
+        echo "  6) [数据留痕] 翻阅应用层历史指令"
+        echo "  7) [故障分析] 获取崩溃回溯报告"
+        echo "  8) [灾难规避] 无损拉取快照与覆盖回退"
+        echo "  0) 返回中控区"
+        hr
+        
+        local s=""; read -rp "执行指令: " s || true
+        case "${s:-}" in
+            1) systemctl status xray --no-pager || true; local _p=""; read -rp "按 Enter 继续..." _p || true ;;
+            2) 
+                echo -e "\n  [公网物理层] IP地址: ${green}$SERVER_IP${none}\n  [解析路由流] nameserver: "
+                grep "^nameserver" /etc/resolv.conf 2>/dev/null || echo "    读取被拒"
+                echo -e "  [协议通讯录] 内网穿透口:"
+                ss -tlnp 2>/dev/null | grep xray || echo "    进程无响应"
+                local _p=""; read -rp "按 Enter 继续..." _p || true 
+                ;;
+            3) 
+                if ! command -v vnstat >/dev/null 2>&1; then 
+                    warn "您的环境中尚未配备 vnstat 组件库。"
+                    local _p=""; read -rp "按 Enter 继续..." _p || true; continue
+                fi
+                clear; title "底层网卡流量计费审计中心"
+                local m_day=$(grep -E "^[[:space:]]*MonthRotate" /etc/vnstat.conf 2>/dev/null | awk '{print $2}' | head -n 1 | tr -d '\r\n')
+                if test -z "$m_day"; then m_day="1 (系统硬缺省)"; fi
+                echo -e "  [全局锚定] 结算日：${cyan}自然月 $m_day 号${none}"
+                hr
+                (vnstat -m 3 2>/dev/null || vnstat -m 2>/dev/null || true) | sed -e 's/estimated/模型预估/ig' -e 's/rx/接收流量/ig' -e 's/tx/出站推送/ig' -e 's/total/并发总计/ig' -e 's/daily/日志按日/ig' -e 's/monthly/汇总按月/ig'
+                hr
+                echo "  1) 指定特定日期进行跨月账单裁断 (1-31)"
+                echo "  2) 下达历史账单日跑量穿梭溯源 (如 2026-04)"
+                echo "  0) 返回主操作台"
+                
+                local vn_opt=""; read -rp "  键入操作码: " vn_opt || true
+                if test "$vn_opt" = "1"; then
+                    local d_day=""; read -rp "请决定强制切断日 (1-31): " d_day || true
+                    if [[ "$d_day" =~ ^[0-9]+$ ]] && test "$d_day" -ge 1 2>/dev/null && test "$d_day" -le 31 2>/dev/null; then
+                        sed -i '/^[#[:space:]]*MonthRotate/d' /etc/vnstat.conf 2>/dev/null || true
+                        echo "MonthRotate $d_day" >> /etc/vnstat.conf
+                        systemctl restart vnstat 2>/dev/null || true
+                        info "计费核心配置更新，流量将于每个月 $d_day 日清空重算。"
+                    else
+                        error "跨界拦截，数字溢出。"
+                    fi
+                    local _p=""; read -rp "按 Enter 继续..." _p || true 
+                elif test "$vn_opt" = "2"; then
+                    local d_month=""; read -rp "穿梭位点 (如 $(date +%Y-%m)，回车则调用近期数据): " d_month || true
+                    if test -z "$d_month"; then 
+                        vnstat -d 2>/dev/null | sed -e 's/estimated/模型预估/ig' -e 's/rx/接收流量/ig' -e 's/tx/出站推送/ig' -e 's/total/并发总计/ig' -e 's/daily/日志按日/ig' -e 's/monthly/汇总按月/ig' || true
+                    else 
+                        vnstat -d 2>/dev/null | grep -iE "($d_month| day |estimated|--)" | sed -e 's/estimated/模型预估/ig' -e 's/rx/接收流量/ig' -e 's/tx/出站推送/ig' -e 's/total/并发总计/ig' -e 's/daily/日志按日/ig' -e 's/monthly/汇总按月/ig' || true
+                    fi
+                    local _p=""; read -rp "按 Enter 继续..." _p || true 
+                fi
+                ;;
+            4)
+                while true; do
+                    clear; title "雷达守望：深空网络实时拓扑连接图"
+                    local x_pids=$(pidof xray 2>/dev/null | xargs | tr -s ' ' '|' || echo "")
+                    if test -n "$x_pids"; then
+                        echo -e "  ${cyan}【底层驻留句柄分布态势】${none}"
+                        ss -ntupa 2>/dev/null | grep -E "pid=($x_pids)[,)]" | awk '{print $1"_"$2}' | sort | uniq -c | sort -nr | awk '{printf "    网络层级: %-15s : 并行活数 %s\n", $2, $1}' || echo "    网关待机"
+                        
+                        echo -e "\n  ${cyan}【独立外部 IP 数据池溯源 (Top 10)】${none}"
+                        local ips=$(ss -ntupa 2>/dev/null | grep -E "pid=($x_pids)[,)]" | grep -vE "LISTEN|UNCONN" | awk '{print $6}' | sed -E 's/:[0-9]+$//' | tr -d '[]' | grep -vE "^127\.0\.0\.1$|^0\.0\.0\.0$|^::$|^\*$|^::ffff:127\.0\.0\.1$" || echo "")
+                        if test -n "$ips"; then
+                            echo "$ips" | sort | uniq -c | sort -nr | head -n 10 | awk '{printf "    嗅探 IP: %-18s (并发信标数: %s)\n", $2, $1}'
+                            local total_ips=$(echo "$ips" | sort | uniq | wc -l)
+                            echo -e "\n  [净化汇总] 全局不同外部物理连接 IP 总计: ${yellow}${total_ips}${none}"
+                        else 
+                            echo -e "    ${gray}无任何外部游荡者接入。${none}"
+                        fi
+                    else 
+                        error "主机服务未响应，可能进程已陨落。"
+                    fi
+                    echo -e "\n  ${green}追踪防卫模式运行中 (每 2 秒自刷刷新)... 键入 [ q ] 切断网络视图。${none}"
+                    local cmd=""
+                    if read -t 2 -n 1 -s cmd 2>/dev/null; then
+                        if test "$cmd" = "q" || test "$cmd" = "Q" || test "$cmd" = $'\e'; then break; fi
+                    fi
+                done
+                ;;
+            5)
+                while true; do
+                    clear; title "强制篡夺 CPU 底层分配表"
+                    local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+                    local current_nice="-20"
+                    if test -f "$limit_file" && grep -q "^Nice=" "$limit_file" 2>/dev/null; then 
+                        current_nice=$(awk -F'=' '/^Nice=/ {print $2}' "$limit_file" | head -n 1 || echo "-20")
+                    fi
+                    echo -e "  Xray 内核抢占权值定位: ${cyan}${current_nice}${none} (工业域: -20 到 -10 间调节)"
+                    hr
+                    local new_nice=""; read -rp "  写入系统优先级设定 (q 退出): " new_nice || true
+                    if test "$new_nice" = "q" || test "$new_nice" = "Q"; then break; fi
+                    
+                    if [[ "$new_nice" =~ ^-[1-2][0-9]$ ]] && test "$new_nice" -ge -20 2>/dev/null && test "$new_nice" -le -10 2>/dev/null; then
+                        sed -i "s/^Nice=.*/Nice=$new_nice/" "$limit_file" 2>/dev/null || true
+                        systemctl daemon-reload >/dev/null 2>&1 || true
+                        info "指令确认下发！由于抢夺底层权力，5 秒后重启进程验证..."
+                        sleep 5
+                        systemctl restart xray >/dev/null 2>&1 || true
+                        info "权重交接完成。"
+                        local _p=""; read -rp "按 Enter 归位..." _p || true; break
+                    else 
+                        error "数据溢出限制门槛！"; sleep 2
+                    fi
+                done
+                ;;
+            6) clear; title "全局核心通讯日志流"; tail -n 50 "$LOG_DIR/xray.log" 2>/dev/null || echo "  档案库真空。"; local _p=""; read -rp "按 Enter 回退..." _p || true ;;
+            7) clear; title "全系统深空错误异常告警"; tail -n 30 "$LOG_DIR/error.log" 2>/dev/null || echo "  无任何结构性损坏产生。"; local _p=""; read -rp "按 Enter 回退..." _p || true ;;
+            8)
+                clear; title "高可用与灾难管理快照备份"
+                ls -t "$BACKUP_DIR"/config_*.json 2>/dev/null || echo "当前冷备库空白。"
+                echo -e "\n  r) 系统反卷引擎：强行以最近正确的冷库替换现网逻辑\n  c) 物理抽帧冷封存：为当下的全局网络环境创建防灾记录\n  0) 取消动作"
+                local bopt=""; read -rp "抉择代码: " bopt || true
+                if test "$bopt" = "r" || test "$bopt" = "R"; then restore_latest_backup; fi
+                if test "$bopt" = "c" || test "$bopt" = "C"; then backup_config; info "全局状态已生成永久保存副本。"; local _p=""; read -rp "Enter..." _p || true; fi
+                ;;
+            0) return ;;
+        esac
+    done
+}
+
+# ==============================================================================
+# [ 0x13.5: Reality 回落深渊扫描器 ]
+# ==============================================================================
+
+do_fallback_probe() {
+    clear
+    title "Reality 回落陷阱深渊侦测引擎 (Fallback)"
+    if test ! -f "$CONFIG"; then
+        error "无法对接底层 JQ 环境结构树配置！"
+        local _p=""; read -rp "按 Enter 返回..." _p || true
+        return
+    fi
+    local out=$(jq -r '
+      .inbounds[]? | select(.protocol=="vless" and .streamSettings.security=="reality") | .streamSettings.realitySettings | 
+      "  [发射管 (Upload)]\n    前置设局诱饵拦截 (afterBytes) : \(.limitFallbackUpload.afterBytes // "安全门全开 (未设防)")\n    防恶意扫描绞杀器 (bytesPerSec) : \(.limitFallbackUpload.bytesPerSec // "安全门全开 (未设防)")\n  [下沉流 (Download)]\n    前置设局诱饵拦截 (afterBytes) : \(.limitFallbackDownload.afterBytes // "安全门全开 (未设防)")\n    防恶意扫描绞杀器 (bytesPerSec) : \(.limitFallbackDownload.bytesPerSec // "安全门全开 (未设防)")"
+    ' "$CONFIG" 2>/dev/null || echo "")
+    if test -n "$out"; then echo -e "$out"; else echo -e "  ${red}致命警告：网络中不存在有效的 Reality 配置基体！${none}"; fi
+    echo ""; local _p=""; read -rp "核查结束，按 Enter 键返回中转枢纽..." _p || true
+}
+
+# ==============================================================================
+# [ 0x14: 系统建仓及全域架构更新导航 ]
+# ==============================================================================
+
+do_sys_init_menu() {
+    while true; do
+        clear
+        title "环境底层组件拉齐与结构重建区"
+        echo "  1) [一键全清] 执行 Linux 强基更新、亚太时间轴校准并置入极客 1GB 内存交换区"
+        echo "  2) [系统防御] 强行修改源头 DNS 解析 (注入 resolvconf，免脱轨断联)"
+        echo -e "  ${cyan}3) [重构内脏] 装备官方预编译版 XANMOD 稳定内核 (主路线，容错率最高)${none}"
+        echo "  4) [极客锻造] 原生提档内核主线，强硬执行物理编译挂载 + BBR3 组件"
+        echo "  5) [网络底层] TX Queue 网卡出站队列防拥堵极限缩减 (配置为 2000 收缩)"
+        echo "  6) [内存特化] 高并发 1,000,000 文件进程限制 + TCP_APP_WIN 特化部署"
+        echo -e "  ${magenta}7) [上帝微操] 应用层及系统层双轨 25 项神级优化全控板 (Dnsmasq/CAKE/ZRAM)${none}"
+        echo -e "  ${cyan}8) [极度发烧] 深入 CAKE 高级模型配置 (设定 Diffserv 调度、物理带宽上限)${none}"
+        echo "  0) 折返中央主轴系统"
+        hr
+        
+        local sys_opt=""; read -rp "输入重构程序代号: " sys_opt || true
+        case "${sys_opt:-}" in
+            1) 
+                print_magenta ">>> 执行主网对接拉取一切基础更新源..."
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update -y >/dev/null 2>&1 || true
+                apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" full-upgrade -y >/dev/null 2>&1 || true
+                apt-get autoremove -y --purge >/dev/null 2>&1 || true
+                apt-get install -y wget curl sudo socat ntpdate e2fsprogs pkg-config iproute2 ethtool >/dev/null 2>&1 || true
+                
+                print_magenta ">>> 重建亚太网络时间轴记录..."
+                if command -v timedatectl >/dev/null 2>&1; then timedatectl set-timezone Asia/Kuala_Lumpur >/dev/null 2>&1 || true; fi
+                if command -v ntpdate >/dev/null 2>&1; then ntpdate -u us.pool.ntp.org >/dev/null 2>&1 || true; fi
+                if command -v hwclock >/dev/null 2>&1; then hwclock --systohc >/dev/null 2>&1 || true; fi
+                info "底层网络环境时空已对接 Asia/Kuala_Lumpur 区块！"
+                check_and_create_1gb_swap
+                
+                print_magenta ">>> 初始化暗核清理器 cc1.sh ..."
+                cat <<'EOF' > /usr/local/bin/cc1.sh
+#!/bin/bash
+export DEBIAN_FRONTEND=noninteractive
+apt-get clean >/dev/null 2>&1 || true
+apt-get autoremove -y --purge >/dev/null 2>&1 || true
+journalctl --vacuum-time=3d >/dev/null 2>&1 || true
+rm -rf /tmp/* 2>/dev/null || true
+rm -rf /var/log/*/*.log 2>/dev/null || true
+sync
+EOF
+                chmod +x /usr/local/bin/cc1.sh 2>/dev/null || true
+                local temp_cron=$(mktemp)
+                crontab -l 2>/dev/null | grep -v "cc1.sh" > "$temp_cron" || true
+                echo "0 4 */10 * * /usr/local/bin/cc1.sh >/dev/null 2>&1" >> "$temp_cron"
+                crontab "$temp_cron" 2>/dev/null || true
+                rm -f "$temp_cron" 2>/dev/null || true
+                info "深度自愈清理计划激活！已将回旋肃清周期设为 10 天。"
+                local _p=""; read -rp "完成部署，按 Enter 键继续..." _p || true 
+                ;;
+            2) do_change_dns ;;
+            3) do_install_xanmod_main_official ;;
+            4) do_xanmod_compile ;;
+            5) do_txqueuelen_opt ;;
+            6) do_perf_tuning ;;
+            7) do_app_level_tuning_menu ;;
+            8) config_cake_advanced ;;
+            0) return ;;
+        esac
+    done
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x15: Xray 核心主通讯环境网络直接热更新 ]
+# ------------------------------------------------------------------------------
+
+do_update_core() {
+    title "Xray 主心骨环境内核迭代"
+    info "强联通官方源更新通道..."
+    if bash -c "$(curl -L -s https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh)" @ install >/dev/null 2>&1; then
+        if test -x "$XRAY_BIN"; then
+            fix_xray_systemd_limits
+            systemctl restart xray >/dev/null 2>&1 || true
+            local cur_ver=$("$XRAY_BIN" version 2>/dev/null | head -n1 | awk '{print $2}' || echo "检索故障")
+            info "全流程覆盖结束，当前主线跃迁到: ${cyan}$cur_ver${none}"
+            local _p=""; read -rp "按 Enter 返回安全界面..." _p || true
+            return 0
+        fi
+    fi
+    error "遭遇官方源封锁或 IPv6 数据穿透故障，导致数据拉取完全被阻隔。"
+    local _p=""; read -rp "按 Enter 关闭进程..." _p || true
+    return 1
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x16: SNI 与安全协议无缝重构路由树 ]
+# ------------------------------------------------------------------------------
+
+_update_matrix() {
+    if test ! -f "$CONFIG"; then return; fi
+    echo "[$SNI_JSON_ARRAY]" > /tmp/sni_array.json
+    _safe_jq_write --arg dest "$BEST_SNI:443" --slurpfile snis /tmp/sni_array.json '
+        (.inbounds[]? | select(.protocol == "vless")) |= (
+            .streamSettings.realitySettings.serverNames = $snis[0] |
+            .streamSettings.realitySettings.dest = $dest
+        )
+    '
+    rm -f /tmp/sni_array.json 2>/dev/null || true
+    ensure_xray_is_alive
+    info "网络架构及反识别面具重构完毕，新版防封已加载上线！"
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x17: 全方位工业建仓与协议构建逻辑 ]
+# ------------------------------------------------------------------------------
+
+do_install() {
+    title "Apex Vanguard Ultimate Final: 高维协议建仓与底层核心网组建"
+    preflight
+    
+    systemctl stop xray >/dev/null 2>&1 || true
+    if test ! -f "$INSTALL_DATE_FILE"; then date +"%Y-%m-%d %H:%M:%S" > "$INSTALL_DATE_FILE"; fi
+    
+    echo -e "  ${cyan}决定本次将要搭载的网络体系：${none}"
+    echo "  1) VLESS-Reality (极致安全伪装架构 / 防止主动探测阻断)"
+    echo "  2) Shadowsocks (抛却重负载，极速穿透轻量备用网)"
+    echo "  3) 启用高可用并行搭载系统 (双通道并发部署)"
+    local proto_choice=""; read -rp "  执行命令编号 (直接回车默认 1): " proto_choice || true
+    proto_choice=${proto_choice:-1}
+
+    if test "$proto_choice" = "1" || test "$proto_choice" = "3"; then
+        while true; do 
+            local input_p=""; read -rp "分配 VLESS 服务数据监听端口 (回车默认绑定 443): " input_p || true
+            input_p=${input_p:-443}
+            if validate_port "$input_p"; then LISTEN_PORT="$input_p"; break; fi
+        done
+        local input_remark=""; read -rp "规划 VLESS 节点基础标识名 (默认 xp-reality): " input_remark || true
+        REMARK_NAME=${input_remark:-xp-reality}
+        choose_sni
+        if test $? -ne 0; then return 1; fi
+    fi
+
+    local ss_port=8388
+    local ss_pass=""
+    local ss_method="aes-256-gcm"
+    
+    if test "$proto_choice" = "2" || test "$proto_choice" = "3"; then
+        while true; do 
+            local input_s=""; read -rp "分配 Shadowsocks 单向挂载通讯口 (回车默认使用 8388): " input_s || true
+            input_s=${input_s:-8388}
+            if validate_port "$input_s"; then ss_port="$input_s"; break; fi
+        done
+        ss_pass=$(gen_ss_pass)
+        ss_method=$(_select_ss_method)
+        if test "$proto_choice" = "2"; then 
+            local input_remark=""; read -rp "配置 SS 面板默认名称 (默认 xp-reality): " input_remark || true
+            REMARK_NAME=${input_remark:-xp-reality}
+        fi
+    fi
+
+    info "从中心枢纽拉取最新的 Xray 核心主程序执行安装流..."
+    if ! bash -c "$(curl -fsSL --connect-timeout 10 https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh)" @ install >/dev/null 2>&1; then
+        warn "因云端问题主脚本直连失败，但环境未遭破坏，稍后请在控制面板尝试执行手动核心更新操作。"
+    fi
+    install_update_dat
+    fix_xray_systemd_limits
+
+    cat > "$CONFIG" <<EOF
+{
+  "log": { "loglevel": "warning" },
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      { "outboundTag": "block", "_enabled": true, "protocol": ["bittorrent"] },
+      { "outboundTag": "block", "_enabled": true, "ip": ["geoip:cn"] },
+      { "outboundTag": "block", "_enabled": true, "domain": ["geosite:cn", "geosite:category-ads-all"] }
+    ]
+  },
+  "inbounds": [],
+  "outbounds": [
+      { "protocol": "freedom", "tag": "direct", "settings": {"domainStrategy": "AsIs"} }, 
+      { "protocol": "blackhole", "tag": "block" }
+  ]
+}
+EOF
+
+    if test "$proto_choice" = "1" || test "$proto_choice" = "3"; then
+        local keys=$("$XRAY_BIN" x25519 2>/dev/null || echo "")
+        local priv=$(echo "$keys" | grep -i "Private" | awk -F': ' '{print $2}' | tr -d ' \r\n' || echo "")
+        local pub=$(echo "$keys" | grep -i "Public" | awk -F': ' '{print $2}' | tr -d ' \r\n' || echo "")
+        local uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || "$XRAY_BIN" uuid)
+        local sid=$(head -c 8 /dev/urandom | xxd -p | tr -d '\n\r' || echo "")
+        local ctime=$(date +"%Y-%m-%d %H:%M")
+        
+        echo "$pub" > "$PUBKEY_FILE"
+        echo "$uuid|$ctime" > "$USER_TIME_MAP"
+        
+        echo "[$SNI_JSON_ARRAY]" > /tmp/sni_array.json
+        cat > /tmp/vless_inbound.json <<EOF
+{
+  "tag": "vless-reality", 
+  "listen": "0.0.0.0", 
+  "port": $LISTEN_PORT, 
+  "protocol": "vless",
+  "settings": {
+      "clients": [ {"id": "$uuid", "flow": "xtls-rprx-vision", "email": "$REMARK_NAME"} ], 
+      "decryption": "none"
+  },
+  "streamSettings": {
+    "network": "tcp", 
+    "security": "reality",
+    "sockopt": {"tcpNoDelay": true, "tcpFastOpen": true},
+    "realitySettings": {
+        "dest": "$BEST_SNI:443", 
+        "serverNames": [], 
+        "privateKey": "$priv", 
+        "publicKey": "$pub", 
+        "shortIds": ["$sid"],
+        "limitFallbackUpload": {"afterBytes": 0, "bytesPerSec": 0, "burstBytesPerSec": 0},
+        "limitFallbackDownload": {"afterBytes": 0, "bytesPerSec": 0, "burstBytesPerSec": 0}
+    }
+  },
+  "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"] }
+}
+EOF
+        _safe_jq_write --slurpfile snis /tmp/sni_array.json --slurpfile vless_tmp /tmp/vless_inbound.json '
+            .inbounds += [ $vless_tmp[0] | .streamSettings.realitySettings.serverNames = $snis[0] ]
+        '
+        rm -f /tmp/vless_inbound.json /tmp/sni_array.json 2>/dev/null || true
+    fi
+
+    if test "$proto_choice" = "2" || test "$proto_choice" = "3"; then
+        cat > /tmp/ss_inbound.json <<EOF
+{
+  "tag": "shadowsocks", 
+  "listen": "0.0.0.0", 
+  "port": $ss_port, 
+  "protocol": "shadowsocks",
+  "settings": { "method": "$ss_method", "password": "$ss_pass", "network": "tcp,udp" },
+  "streamSettings": { "sockopt": {"tcpNoDelay": true, "tcpFastOpen": true} }
+}
+EOF
+        _safe_jq_write --slurpfile ss_tmp /tmp/ss_inbound.json '.inbounds += [ $ss_tmp[0] ]'
+        rm -f /tmp/ss_inbound.json 2>/dev/null || true
+    fi
+
+    fix_permissions
+    systemctl enable xray >/dev/null 2>&1 || true
+    
+    if ensure_xray_is_alive; then
+        info "所有架构配置装载确认生效！通讯网络已打开。"
+        do_summary
+    else
+        error "未能顺利贯通服务进程，内部存在数据阻断，请详细勘验报错日志档案。"
+        return 1
+    fi
+    
+    while true; do
+        local opt=""; read -rp "可按下 Enter 键安全返回系统中心菜单，亦或输入 b 即刻执行 SNI 的网络更换及漂移: " opt || true
+        if test "$opt" = "b" || test "$opt" = "B"; then
+            if choose_sni; then _update_matrix; do_summary; else break; fi
+        else 
+            break
+        fi
+    done
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x23: 全系统底层绝对清除与终结机制 ]
+# ------------------------------------------------------------------------------
+
+do_uninstall() {
+    title "终极断供清理器：彻底摧毁当前生态环境并回卷"
+    local confirm=""; read -rp "此不可逆物理毁灭指令将被下达，将会摧毁私钥记录及 DNS 强行配置 (但网卡级与并发级设定保留)，您完全明确此行为吗？(y/n): " confirm || true
+    if test "$confirm" != "y"; then return; fi
+    
+    info "安全门禁确认，彻底开始核心粉碎行动..."
+    systemctl stop dnsmasq >/dev/null 2>&1 || true
+    systemctl disable dnsmasq >/dev/null 2>&1 || true
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get purge -y dnsmasq >/dev/null 2>&1 || true
+    
+    chattr -i /etc/resolv.conf 2>/dev/null || true
+    if test -f /etc/resolv.conf.bak; then mv -f /etc/resolv.conf.bak /etc/resolv.conf 2>/dev/null || true; fi
+    
+    systemctl stop xray >/dev/null 2>&1 || true
+    systemctl disable xray >/dev/null 2>&1 || true
+    rm -rf /etc/systemd/system/xray* /lib/systemd/system/xray* >/dev/null 2>&1 || true
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    
+    rm -rf "$CONFIG_DIR" "$DAT_DIR" "$XRAY_BIN" "$SCRIPT_DIR" /var/log/xray* /usr/local/bin/xrv "$SCRIPT_PATH" >/dev/null 2>&1 || true
+    
+    local temp_cron=$(mktemp /tmp/cron_XXXXXX) || true
+    if test -f "$temp_cron"; then
+        crontab -l 2>/dev/null | grep -v "update-dat.sh" | grep -v "systemctl restart xray" | grep -v "cc1.sh" > "$temp_cron" || true
+        crontab "$temp_cron" 2>/dev/null || true
+        rm -f "$temp_cron" 2>/dev/null || true
+    fi
+    info "物理痕迹及所有配置文件与组件链路已完全格式化，现网回归系统纯净初始状态！"
+    exit 0
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x24: 战舰大屏与中央主节点路由管理台 ]
+# ------------------------------------------------------------------------------
+
+main_menu() {
+    while true; do
+        clear
+        echo -e "${blue}======================================================================${none}"
+        echo -e "  ${magenta}Xray System Advanced Management V190 - (The Apex Vanguard)${none}"
+        
+        local svc=$(systemctl is-active xray 2>/dev/null || echo "inactive")
+        if test "$svc" = "active"; then 
+            svc="${green}平稳在线 (Running)${none}"
+        else 
+            svc="${red}离线静默 (Stopped)${none}"
+        fi
+        
+        local sys_ver=$(uname -r 2>/dev/null || echo "未探测到数据")
+        echo -e "  引擎态势: $svc | 全局快捷指令: ${cyan}xrv${none} | 外部识别 IP: ${yellow}$(_get_ip || echo "探测异常")${none}"
+        echo -e "  系统装配内核: ${cyan}${sys_ver}${none} | 所属构建号: V${SCRIPT_VERSION}"
+        echo -e "${blue}======================================================================${none}"
+        echo "  1) 创建/重构 安全底层全加密协议网络连接 (VLESS/SS)"
+        echo "  2) 用户凭证生命周期与独立参数化管理控制"
+        echo "  3) 节点链接与多维信息输出聚合中心"
+        echo "  4) 人工发起数据强联，执行路由解析规则库强制覆盖更新"
+        echo "  5) 在线平滑热更新主程序底层 Core 环境"
+        echo "  6) 修改或全自动剔除被拦截的防封伪装特征矩阵域名"
+        echo "  7) 系统防火墙策略配置 (阻止内网 BT 滥用及第三方广告请求)"
+        echo "  8) Reality Fallback 底层限速沙盒分析器"
+        echo "  9) 全景网络连接审计日志与商用级别网络流量记账本"
+        echo "  10) 高级发烧：网卡/系统协议栈/内核 60 余项极客深度极限配置"
+        echo "  0) 折叠命令控制台，返回底层终端"
+        echo -e "  ${red}88) 物理不可逆自毁！撤销环境安全防线与系统配置设定${none}"
+        hr
+        
+        local num=""; read -rp "请输入操作代码指令: " num || true
+        case "${num:-}" in
+            1) do_install ;;
+            2) do_user_manager ;;
+            3) 
+                do_summary
+                while true; do 
+                    local rb=""; read -rp "当前配置输出完毕，按 Enter 退出或者按 b 发起特征矩阵的更替指令: " rb || true
+                    if test "$rb" = "b" || test "$rb" = "B"; then 
+                        if choose_sni; then _update_matrix; do_summary; else break; fi
+                    else 
+                        break
+                    fi
+                done 
+                ;;
+            4) 
+                print_magenta ">>> 初始化云网络联通中，即将发起底层拉取..."
+                bash "$UPDATE_DAT_SCRIPT" >/dev/null 2>&1 || true
+                ensure_xray_is_alive; info "配置数据已穿透替换系统！当前路由库完成热加载！"
+                local _p=""; read -rp "按 Enter 退回安全环境..." _p || true 
+                ;;
+            5) do_update_core ;;
+            6) 
+                if choose_sni; then 
+                    _update_matrix; do_summary
+                    while true; do 
+                        local rb=""; read -rp "任务完毕，请直接按 Enter 返回，或再次敲击 b 开启连续变更模式: " rb || true
+                        if test "$rb" = "b" || test "$rb" = "B"; then 
+                            if choose_sni; then _update_matrix; do_summary; else break; fi
+                        else 
+                            break
+                        fi
+                    done
+                fi 
+                ;;
+            7) _global_block_rules ;;
+            8) do_fallback_probe ;;
+            9) do_status_menu ;;
+            10) do_sys_init_menu ;;
+            88) do_uninstall ;;
+            0) exit 0 ;;
+            *) echo -e "${red}错误拦截：代码解析为空值，请勿操作不合规的非法数据命令！${none}"; sleep 1 ;;
+        esac
+    done
+}
+
+# ==============================================================================
+# 系统环境预制防爆加载及主控接管触发器
+# ==============================================================================
+preflight
+main_menu
+# ==============================================================================
+# EOF - Apex Vanguard V190 System Advanced Control Ready.
+# ==============================================================================
