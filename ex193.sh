@@ -1,0 +1,2786 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# 脚本名称: ex193.sh (The Apex Vanguard - Project Genesis V193)
+# 快捷方式: xrv
+#
+# 【V193 世纪融合里程碑】
+#   1. 完美融合: 继承 ex100 极其稳健的 kernel.org 主线源码编译逻辑，彻底抛弃带 Bug 的 Xanmod 源码。
+#   2. 矩阵满血: 完整保留 ex188e5 的 25 项全域系统级/应用层微操矩阵（含 CAKE, ZRAM, GSO 等）。
+#   3. 变量找回: 修复丢失的 magenta 变量与 print_magenta 输出函数，杜绝 set -u 熔断。
+#   4. 绝缘护盾: JQ 解析器全面实装 select(. != null) 与 |= 安全写入，拒绝隐式崩溃。
+#   5. 工业文案: 回归 ex100 的硬核、专业日志风格，杜绝浮夸。
+# ==============================================================================
+
+# 必须用 bash 运行
+if test -z "${BASH_VERSION:-}"; then
+    echo "Error: 请使用 bash 执行本脚本: bash ex193.sh"
+    exit 1
+fi
+
+if test "$EUID" -ne 0; then 
+    echo -e "\033[31m[致命错误] 触及底层内核参数必须拥有最高权限，请使用 root 账户执行！\033[0m"
+    exit 1
+fi
+
+if ! command -v systemctl >/dev/null 2>&1; then 
+    echo -e "\033[31m[致命错误] 当前系统缺失 systemd 守护组件，环境异常！\033[0m"
+    exit 1
+fi
+
+# 启用严格模式防爆 (错误中断、未定义变量拦截、管道流错误捕获)
+set -euo pipefail
+IFS=$' \n\t'
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# -- 颜色定义与全局常量 --
+readonly red='\033[31m'
+readonly yellow='\033[33m'
+readonly gray='\033[90m'
+readonly green='\033[92m'
+readonly blue='\033[94m'
+readonly magenta='\033[95m'
+readonly cyan='\033[96m'
+readonly none='\033[0m'
+
+readonly SCRIPT_VERSION="193"
+readonly XRAY_BIN="/usr/local/bin/xray"
+readonly CONFIG_DIR="/usr/local/etc/xray"
+readonly CONFIG="$CONFIG_DIR/config.json"
+readonly PUBKEY_FILE="$CONFIG_DIR/public.key"
+readonly SNI_CACHE_FILE="$CONFIG_DIR/sni_cache.txt"
+readonly INSTALL_DATE_FILE="$CONFIG_DIR/install_date.txt"
+readonly USER_SNI_MAP="$CONFIG_DIR/user_sni.txt"
+readonly USER_TIME_MAP="$CONFIG_DIR/user_time.txt"
+readonly CAKE_OPTS_FILE="$CONFIG_DIR/cake_opts.txt"
+readonly FLAGS_DIR="$CONFIG_DIR/flags"
+readonly DAT_DIR="/usr/local/share/xray"
+readonly SCRIPT_DIR="/usr/local/etc/xray-script"
+readonly UPDATE_DAT_SCRIPT="$SCRIPT_DIR/update-dat.sh"
+readonly LOG_DIR="/var/log/xray"
+readonly BACKUP_DIR="$CONFIG_DIR/backups"
+readonly SYMLINK="/usr/local/bin/xrv"
+readonly SCRIPT_PATH=$(readlink -f "$0")
+
+GLOBAL_IP=""
+SERVER_IP=""
+REMARK_NAME="xp-reality"
+BEST_SNI="www.microsoft.com"
+SNI_JSON_ARRAY="\"www.microsoft.com\""
+LISTEN_PORT=443
+
+if ! mkdir -p "$CONFIG_DIR" "$DAT_DIR" "$SCRIPT_DIR" "$LOG_DIR" "$BACKUP_DIR" "$FLAGS_DIR" 2>/dev/null; then true; fi
+if ! touch "$USER_SNI_MAP" "$USER_TIME_MAP" 2>/dev/null; then true; fi
+
+# -- 辅助输出函数 --
+print_red()     { echo -e "${red}$*${none}"; }
+print_green()   { echo -e "${green}$*${none}"; }
+print_yellow()  { echo -e "${yellow}$*${none}"; }
+print_magenta() { echo -e "${magenta}$*${none}"; }
+print_cyan()    { echo -e "${cyan}$*${none}"; }
+
+info()  { echo -e "${green}✓ [INFO]${none} $*"; }
+warn()  { echo -e "${yellow}! [WARN]${none} $*"; }
+error() { echo -e "${red}✗ [ERROR]${none} $*"; }
+die()   { echo -e "\n${red}✗ [FATAL]${none} $*\n"; exit 1; }
+
+title() {
+    echo -e "\n${blue}======================================================================${none}"
+    echo -e "  ${cyan}$*${none}"
+    echo -e "${blue}======================================================================${none}"
+}
+hr() { echo -e "${gray}----------------------------------------------------------------------${none}"; }
+
+log_info()  { echo "[$(date +'%Y-%m-%d %H:%M:%S')] INFO:  $*" >> "$LOG_DIR/xray.log" 2>/dev/null || true; }
+log_error() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] ERROR: $*" >> "$LOG_DIR/error.log" 2>/dev/null || true; }
+
+cleanup_temp_files() {
+    rm -f /tmp/sni_array.json /tmp/vless_inbound.json /tmp/vless_final.json /tmp/ss_inbound.json /tmp/new_client.json /tmp/xray_users*.txt /tmp/install-release.sh /tmp/sni_test.* /tmp/check_x86-64_psabi.sh /tmp/current_cron 2>/dev/null || true
+}
+
+_err_handler() {
+    local code=$1 line=$2 cmd=$3
+    echo -e "\n${red}================== [ SYSTEM PANIC ] ==================${none}" >&2
+    echo -e "${yellow} >> 战舰核心遇到致命断层，运行已被系统强行熔断！${none}" >&2
+    echo -e "${cyan} >> 错误代号: ${none}${code}" >&2
+    echo -e "${cyan} >> 崩溃行号: ${none}${line}" >&2
+    echo -e "${cyan} >> 故障指令: ${none}${cmd}" >&2
+    echo -e "${red}======================================================${none}\n" >&2
+    log_error "PANIC TRIGGERED -> EXIT=$code LINE=$line CMD=[$cmd]"
+    cleanup_temp_files
+}
+
+trap '_err_handler $? $LINENO "$BASH_COMMAND"' ERR
+trap cleanup_temp_files EXIT
+
+_get_ip() {
+    if test -n "${SERVER_IP:-}"; then
+        if test "$SERVER_IP" != "获取失败"; then echo "$SERVER_IP"; return; fi
+    fi
+    if test -z "${GLOBAL_IP:-}"; then
+        local temp_ip=""
+        set +e
+        temp_ip=$(curl -k -s -4 --connect-timeout 3 https://api.ipify.org 2>/dev/null | tr -d '\r\n' || echo "")
+        if test -z "$temp_ip"; then
+            temp_ip=$(curl -k -s -4 --connect-timeout 3 https://ifconfig.me 2>/dev/null | tr -d '\r\n' || echo "")
+        fi
+        set -e
+        if test -z "$temp_ip"; then
+            GLOBAL_IP="获取失败"
+        else
+            GLOBAL_IP="$temp_ip"
+        fi
+    fi
+    echo "$GLOBAL_IP"
+}
+
+validate_port() {
+    local p="$1"
+    if test -z "$p"; then return 1; fi
+    if ! [[ "$p" =~ ^[0-9]+$ ]]; then return 1; fi
+    if test "$p" -lt 1 2>/dev/null || test "$p" -gt 65535 2>/dev/null; then return 1; fi
+    if ss -tuln 2>/dev/null | grep -q ":${p} "; then
+        error "端口 $p 已被系统占用。"
+        return 1
+    fi
+    return 0
+}
+
+gen_ss_pass() { head -c 24 /dev/urandom | base64 | tr -d '=/+\n\r' | head -c 24 || true; }
+
+_select_ss_method() {
+    echo -e "  ${cyan}选择 SS 加密方式：${none}" >&2
+    echo "  1) aes-256-gcm (推荐)  2) chacha20-ietf-poly1305" >&2
+    local mc=""
+    read -rp "  编号 (默认 1): " mc >&2 || true
+    if test "$mc" = "2"; then echo "chacha20-ietf-poly1305"; else echo "aes-256-gcm"; fi
+}
+
+detect_os() {
+    if test -f /etc/os-release; then
+        . /etc/os-release
+        echo "${ID:-unknown}"
+    else 
+        echo "unknown"
+    fi
+}
+
+pkg_install() {
+    local list="$*"
+    export DEBIAN_FRONTEND=noninteractive
+    local os_id=$(detect_os)
+    set +e
+    if echo "$os_id" | grep -qiE "ubuntu|debian"; then
+        apt-get update -y >/dev/null 2>&1 || true
+        apt-get install -y $list >/dev/null 2>&1 || true
+    elif echo "$os_id" | grep -qiE "centos|rhel|fedora|rocky|almalinux"; then
+        yum makecache -y >/dev/null 2>&1 || true
+        yum install -y $list >/dev/null 2>&1 || true
+    fi
+    set -e
+}
+
+preflight() {
+    if test "$EUID" -ne 0; then die "此脚本必须以 root 身份运行。"; fi
+    if ! command -v systemctl >/dev/null 2>&1; then die "系统缺少 systemctl，请更换标准的 systemd 系统。"; fi
+
+    local need="jq curl wget xxd unzip qrencode vnstat cron openssl coreutils sed e2fsprogs pkg-config iproute2 ethtool bc bison flex dwarves rsync python3 cpio apt-transport-https"
+    local missing=""
+    for p in $need; do
+        if ! command -v "$p" >/dev/null 2>&1; then missing="$missing $p"; fi
+    done
+    
+    if test -n "$missing"; then
+        info "正在同步工业级依赖: $missing"
+        pkg_install $missing
+        systemctl start vnstat  >/dev/null 2>&1 || true
+        systemctl enable vnstat >/dev/null 2>&1 || true
+        systemctl start cron    >/dev/null 2>&1 || systemctl start crond >/dev/null 2>&1 || true
+    fi
+
+    if test -f "$SCRIPT_PATH"; then
+        cp -f "$SCRIPT_PATH" "$SYMLINK" 2>/dev/null || true
+        chmod +x "$SYMLINK" 2>/dev/null || true
+        hash -r 2>/dev/null || true
+    fi
+
+    SERVER_IP=$(_get_ip)
+    if test "$SERVER_IP" = "获取失败"; then warn "未能自动获取当前公网 IP 地址。"; fi
+}
+
+fix_xray_systemd_limits() {
+    local override_dir="/etc/systemd/system/xray.service.d"
+    mkdir -p "$override_dir" 2>/dev/null || true
+    local limit_file="$override_dir/limits.conf"
+
+    local current_nice="-20"
+    local current_gogc="100"
+    local current_oom="true"
+    local current_affinity=""
+    local current_gomaxprocs=""
+    local current_buffer=""
+
+    if test -f "$limit_file"; then
+        if grep -q "^Nice=" "$limit_file" 2>/dev/null; then current_nice=$(awk -F'=' '/^Nice=/{print $2}' "$limit_file" | head -n 1 || echo "-20"); fi
+        if grep -q "^Environment=\"GOGC=" "$limit_file" 2>/dev/null; then current_gogc=$(awk -F'=' '/^Environment="GOGC=/{print $3}' "$limit_file" | tr -d '"' | head -n 1 || echo "100"); fi
+        if ! grep -q "^OOMScoreAdjust=" "$limit_file" 2>/dev/null; then current_oom="false"; fi
+        if grep -q "^CPUAffinity=" "$limit_file" 2>/dev/null; then current_affinity=$(awk -F'=' '/^CPUAffinity=/{print $2}' "$limit_file" | head -n 1 || echo ""); fi
+        if grep -q "^Environment=\"GOMAXPROCS=" "$limit_file" 2>/dev/null; then current_gomaxprocs=$(awk -F'=' '/^Environment="GOMAXPROCS=/{print $3}' "$limit_file" | tr -d '"' | head -n 1 || echo ""); fi
+        if grep -q "^Environment=\"XRAY_RAY_BUFFER_SIZE=" "$limit_file" 2>/dev/null; then current_buffer=$(awk -F'=' '/^Environment="XRAY_RAY_BUFFER_SIZE=/{print $3}' "$limit_file" | tr -d '"' | head -n 1 || echo ""); fi
+    fi
+
+    local total_mem=$(free -m 2>/dev/null | awk '/Mem/{print $2}' || echo "1024")
+    local go_mem_limit=$(( total_mem * 85 / 100 ))
+
+    cat > "$limit_file" << EOF
+[Service]
+LimitNOFILE=1048576
+LimitNPROC=512000
+LimitMEMLOCK=infinity
+Nice=${current_nice}
+Environment="GOMEMLIMIT=${go_mem_limit}MiB"
+Environment="GOGC=${current_gogc}"
+Restart=on-failure
+RestartSec=10s
+EOF
+
+    if test "$current_oom" = "true"; then
+        cat >> "$limit_file" << 'EOF'
+OOMScoreAdjust=-500
+IOSchedulingClass=realtime
+IOSchedulingPriority=2
+EOF
+    fi
+    if test -n "$current_affinity"; then echo "CPUAffinity=$current_affinity" >> "$limit_file"; fi
+    if test -n "$current_gomaxprocs"; then echo "Environment=\"GOMAXPROCS=$current_gomaxprocs\"" >> "$limit_file"; fi
+    if test -n "$current_buffer"; then echo "Environment=\"XRAY_RAY_BUFFER_SIZE=$current_buffer\"" >> "$limit_file"; fi
+    systemctl daemon-reload >/dev/null 2>&1 || true
+}
+
+install_update_dat() {
+    cat > "$UPDATE_DAT_SCRIPT" << 'UPDSH'
+#!/usr/bin/env bash
+XRAY_DAT_DIR="/usr/local/share/xray"
+LOG_FILE="/var/log/xray/update-dat.log"
+
+log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
+
+dl() {
+    local url="$1" out="$2"
+    for i in 1 2 3; do
+        if curl -fsSL --connect-timeout 10 --max-time 300 -o "$out.tmp" "$url"; then
+            mv -f "$out.tmp" "$out"
+            log "[INFO] 成功更新: $url"
+            return 0
+        fi
+        log "[WARN] 更新失败重试 [$i/3]: $url"
+        sleep 5
+    done
+    log "[ERROR] 规则库下载失败: $url"
+    return 1
+}
+
+dl "https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat"   "$XRAY_DAT_DIR/geoip.dat"
+dl "https://github.com/Loyalsoldier/domain-list-custom/releases/latest/download/geosite.dat" "$XRAY_DAT_DIR/geosite.dat"
+UPDSH
+    chmod +x "$UPDATE_DAT_SCRIPT" 2>/dev/null || true
+    
+    local tmp_cron=$(mktemp /tmp/cron_XXXXXX) || return
+    crontab -l 2>/dev/null | grep -v "$UPDATE_DAT_SCRIPT" | grep -v "systemctl restart xray" > "$tmp_cron" || true
+    echo "0 3 * * * $UPDATE_DAT_SCRIPT >/dev/null 2>&1" >> "$tmp_cron"
+    echo "10 3 * * * /bin/systemctl restart xray >/dev/null 2>&1" >> "$tmp_cron"
+    crontab "$tmp_cron" 2>/dev/null || true
+    rm -f "$tmp_cron" 2>/dev/null || true
+    info "已配置全球库热更与错峰重启: 3:00 静默下载，3:10 安全重载 Xray 进程。"
+}
+
+do_change_dns() {
+    title "配置系统 DNS 解析 (resolvconf)"
+    local release=$(detect_os)
+    if test ! -e '/usr/sbin/resolvconf' && test ! -e '/sbin/resolvconf'; then
+        info "未检测到 resolvconf，准备安装..."
+        pkg_install resolvconf
+    fi
+    
+    systemctl stop systemd-resolved 2>/dev/null || true
+    systemctl disable systemd-resolved 2>/dev/null || true
+    systemctl stop resolvconf.service > /dev/null 2>&1 || true
+    systemctl start resolvconf.service > /dev/null 2>&1 || true
+    systemctl enable resolvconf.service > /dev/null 2>&1 || true
+
+    local nameserver=""
+    local IPcheck="0"
+    while test "$IPcheck" = "0"; do
+        read -rp "请输入自定义 Nameserver IP (例如 8.8.8.8): " nameserver || true
+        if [[ $nameserver =~ ^([0-9]{1,2}|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.([0-9]{1,2}|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.([0-9]{1,2}|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.([0-9]{1,2}|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$ ]]; then
+            IPcheck="1"
+        else
+            print_red "输入格式错误，请输入合法的 IPv4 地址。"
+        fi
+    done
+
+    chattr -i /etc/resolv.conf 2>/dev/null || true
+    rm -f /etc/resolv.conf 2>/dev/null || true
+    if test -f /etc/resolv.conf.bak; then mv /etc/resolv.conf.bak /etc/resolv.conf 2>/dev/null || true; fi
+    
+    echo "nameserver $nameserver" > /etc/resolv.conf
+    chattr +i /etc/resolv.conf 2>/dev/null || true
+    
+    mkdir -p /etc/resolvconf/resolv.conf.d 2>/dev/null || true
+    echo "nameserver $nameserver" > /etc/resolvconf/resolv.conf.d/head 2>/dev/null || true
+    systemctl restart resolvconf.service >/dev/null 2>&1 || true
+    info "DNS 已被物理锁定为：$nameserver"
+}
+
+fix_permissions() {
+    if test -f "$CONFIG"; then chmod 644 "$CONFIG" 2>/dev/null || true; fi
+    if test -d "$CONFIG_DIR"; then chmod 755 "$CONFIG_DIR" 2>/dev/null || true; fi
+    chown -R root:root "$CONFIG_DIR" 2>/dev/null || true
+    if test -f "$PUBKEY_FILE"; then chmod 600 "$PUBKEY_FILE" 2>/dev/null || true; fi
+}
+
+backup_config() {
+    if test ! -f "$CONFIG"; then return 0; fi
+    local ts=$(date +%Y%m%d_%H%M%S)
+    cp -f "$CONFIG" "$BACKUP_DIR/config_${ts}.json" 2>/dev/null || true
+    ls -t "$BACKUP_DIR"/config_*.json 2>/dev/null | tail -n +11 | xargs rm -f 2>/dev/null || true
+}
+
+restore_latest_backup() {
+    local latest=$(ls -t "$BACKUP_DIR"/config_*.json 2>/dev/null | head -n 1 || echo "")
+    if test -n "$latest"; then
+        cp -f "$latest" "$CONFIG" 2>/dev/null || true
+        fix_permissions
+        systemctl restart xray >/dev/null 2>&1 || true
+        warn "已自动回滚至上次正确的配置: $(basename "$latest")"
+        return 0
+    fi
+    error "没有找到可用的配置备份。"
+    return 1
+}
+
+verify_xray_config() {
+    local target_config="$1"
+    if test ! -f "$XRAY_BIN"; then return 0; fi
+    local test_result
+    set +e
+    if ! test_result=$("$XRAY_BIN" run -test -config "$target_config" 2>&1); then
+        test_result=$("$XRAY_BIN" -test -config "$target_config" 2>&1 || echo "核心测试失败")
+    fi
+    set -e
+    if echo "$test_result" | grep -qi "Configuration OK"; then
+        return 0
+    else
+        error "配置文件安全校验未通过，Xray 核心拒绝加载。"
+        echo -e "${gray}$test_result${none}"
+        return 1
+    fi
+}
+
+_safe_jq_write() {
+    backup_config
+    local tmp_raw=$(mktemp) || return 1
+    local tmp="${tmp_raw}.json"
+    mv -f "$tmp_raw" "$tmp" 2>/dev/null || true
+    
+    set +e
+    jq "$@" "$CONFIG" > "$tmp" 2>/dev/null
+    local jq_res=$?
+    set -e
+    
+    if test $jq_res -eq 0; then
+        if test -s "$tmp"; then
+            if verify_xray_config "$tmp"; then
+                mv -f "$tmp" "$CONFIG" 2>/dev/null || true
+                fix_permissions
+                return 0
+            else
+                rm -f "$tmp" 2>/dev/null || true
+                restore_latest_backup
+                return 1
+            fi
+        else
+            rm -f "$tmp" 2>/dev/null || true
+            restore_latest_backup
+            return 1
+        fi
+    else
+        rm -f "$tmp" 2>/dev/null || true
+        log_error "jq 修改失败，语法故障，写入已中止。"
+        restore_latest_backup
+        return 1
+    fi
+}
+
+ensure_xray_is_alive() {
+    info "正在重载 Xray 服务进程..."
+    systemctl restart xray >/dev/null 2>&1 || true
+    sleep 3
+    if systemctl is-active --quiet xray; then
+        info "Xray 服务运行正常。"
+        return 0
+    else
+        error "Xray 服务启动失败，请检查以下日志："
+        hr
+        journalctl -u xray.service --no-pager -n 15 2>/dev/null | awk '{print "    " $0}' || true
+        hr
+        restore_latest_backup
+        local _p=""; read -rp "按 Enter 继续..." _p || true
+        return 1
+    fi
+}
+
+run_sni_scanner() {
+    title "雷达嗅探：130+ 实体矩阵与国内连通性探测"
+    print_yellow ">>> 扫描中... (随时按回车键可立即中止并挑选已扫描节点)\n"
+    if ! mkdir -p "$CONFIG_DIR" 2>/dev/null; then true; fi
+    
+    local sni_list=(
+        "www.apple.com" "support.apple.com" "developer.apple.com" "id.apple.com" "icloud.apple.com"
+        "swdist.apple.com" "swcdn.apple.com" "updates.cdn-apple.com" "mensura.cdn-apple.com" "osxapps.itunes.apple.com"
+        "aod.itunes.apple.com" "is1-ssl.mzstatic.com" "itunes.apple.com" "gateway.icloud.com" "www.icloud.com"
+        "www.microsoft.com" "login.microsoftonline.com" "portal.azure.com" "support.microsoft.com" "office.com"
+        "update.microsoft.com" "windowsupdate.microsoft.com" "software.download.prss.microsoft.com" "cdn-dynmedia-1.microsoft.com"
+        "www.intel.com" "downloadcenter.intel.com" "ark.intel.com" "www.amd.com" "drivers.amd.com" "community.amd.com"
+        "webinar.amd.com" "ir.amd.com" "www.dell.com" "support.dell.com" "www.hp.com" "support.hp.com" "developers.hp.com"
+        "www.bmw.com" "configure.bmw.com" "shop.bmw.com" "www.mercedes-benz.com" "me.mercedes-benz.com"
+        "www.toyota-global.com" "global.toyota" "www.toyota.com" "www.honda.com" "global.honda" "www.volkswagen.com"
+        "service.volkswagen.com" "www.vw.com" "www.nike.com" "account.nike.com" "store.nike.com" "www.adidas.com"
+        "account.adidas.com" "www.zara.com" "static.zara.net" "www.ikea.com" "secure.ikea.com" "www.shell.com"
+        "careers.shell.com" "www.bp.com" "login.bp.com" "www.totalenergies.com" "www.ge.com" "digital.ge.com"
+        "www.abb.com" "new.abb.com" "www.hsbc.com" "online.hsbc.com" "www.goldmansachs.com" "login.gs.com"
+        "www.morganstanley.com" "secure.morganstanley.com" "www.maersk.com" "www.msc.com" "www.cma-cgm.com"
+        "www.hapag-lloyd.com" "www.michelin.com" "www.bridgestone.com" "www.goodyear.com" "www.pirelli.com"
+        "www.sony.com" "www.sony.net" "www.panasonic.com" "www.canon.com" "www.nintendo.com" "www.lg.com"
+        "www.epson.com" "www.unilever.com" "www.loreal.com" "www.shiseido.com" "www.jnj.com" "www.kao.com"
+        "www.uniqlo.com" "www.hermes.com" "www.chanel.com" "services.chanel.com" "www.louisvuitton.com"
+        "eu.louisvuitton.com" "www.dior.com" "www.ferragamo.com" "www.versace.com" "www.prada.com" "www.fendi.com"
+        "www.gucci.com" "www.tiffany.com" "www.esteelauder.com" "www.maje.com" "www.swatch.com" "www.coca-cola.com"
+        "www.coca-colacompany.com" "www.pepsi.com" "www.pepsico.com" "www.nestle.com" "www.bk.com" "www.heinz.com"
+        "www.pg.com" "www.basf.com" "www.bayer.com" "www.bosch.com" "www.bosch-home.com" "www.lexus.com" "www.audi.com"
+        "www.porsche.com" "www.skoda-auto.com" "www.gm.com" "www.chevrolet.com" "www.cadillac.com" "www.ford.com"
+        "www.lincoln.com" "www.hyundai.com" "www.kia.com" "www.peugeot.com" "www.renault.com" "www.jaguar.com"
+        "www.landrover.com" "www.astonmartin.com" "www.mclaren.com" "www.ferrari.com" "www.maserati.com" "www.volvocars.com"
+        "www.tesla.com" "s0.awsstatic.com" "d1.awsstatic.com" "images-na.ssl-images-amazon.com" "m.media-amazon.com"
+        "www.nvidia.com" "academy.nvidia.com" "images.nvidia.com" "blogs.nvidia.com" "docs.nvidia.com" "docscontent.nvidia.com"
+        "www.samsung.com" "www.sap.com" "www.oracle.com" "www.mysql.com" "www.swift.com" "download-installer.cdn.mozilla.net"
+        "addons.mozilla.org" "www.airbnb.co.uk" "www.airbnb.ca" "www.airbnb.com.sg" "www.airbnb.com.au" "www.airbnb.co.in"
+        "www.ubi.com" "lol.secure.dyn.riotcdn.net" "one-piece.com" "player.live-video.net" "mit.edu" "www.mit.edu" 
+        "web.mit.edu" "ocw.mit.edu" "csail.mit.edu" "libraries.mit.edu" "alum.mit.edu" "id.mit.edu" "stanford.edu" 
+        "www.stanford.edu" "cs.stanford.edu" "ai.stanford.edu" "web.stanford.edu" "login.stanford.edu" "ox.ac.uk" 
+        "www.ox.ac.uk" "cs.ox.ac.uk" "maths.ox.ac.uk" "login.ox.ac.uk" "lufthansa.com" "www.lufthansa.com" 
+        "book.lufthansa.com" "checkin.lufthansa.com" "api.lufthansa.com" "singaporeair.com" "www.singaporeair.com" 
+        "booking.singaporeair.com" "krisflyer.singaporeair.com" "trekbikes.com" "www.trekbikes.com" "shop.trekbikes.com" 
+        "support.trekbikes.com" "specialized.com" "www.specialized.com" "store.specialized.com" "support.specialized.com" 
+        "giant-bicycles.com" "www.giant-bicycles.com" "dealer.giant-bicycles.com" "logitech.com" "www.logitech.com" 
+        "support.logitech.com" "gaming.logitech.com" "razer.com" "www.razer.com" "support.razer.com" "insider.razer.com" 
+        "corsair.com" "www.corsair.com" "support.corsair.com" "account.asus.com" "kingston.com" "www.kingston.com" 
+        "shop.kingston.com" "support.kingston.com" "seagate.com" "www.seagate.com" "support.seagate.com" "kleenex.com" 
+        "www.kleenex.com" "shop.kleenex.com" "scottbrand.com" "www.scottbrand.com" "tempo-world.com" "www.tempo-world.com"
+    )
+
+    local sni_string=$(printf "%s\n" "${sni_list[@]}")
+    if command -v shuf >/dev/null 2>&1; then
+        sni_string=$(echo "$sni_string" | shuf)
+    else
+        sni_string=$(echo "$sni_string" | awk 'BEGIN{srand()} {print rand()"\t"$0}' | sort -n | cut -f2-)
+    fi
+
+    local tmp_sni=$(mktemp /tmp/sni_test.XXXXXX) || true
+
+    for sni in $sni_string; do
+        local key=""
+        if read -t 0.1 -n 1 -s key 2>/dev/null; then
+            echo -e "\n${yellow}探测已手动中止，正在整理已捕获节点...${none}"
+            break
+        fi
+
+        set +e
+        local time_raw=$(LC_ALL=C curl -sL -w "%{time_connect}" -o /dev/null --connect-timeout 2 -m 4 "https://$sni" 2>/dev/null || echo "0")
+        local ms=$(echo "$time_raw" | awk '{print int($1 * 1000)}' 2>/dev/null || echo "0")
+        
+        if test "${ms:-0}" -gt 0 2>/dev/null; then
+            if curl -sI -m 2 --connect-timeout 2 "https://$sni" 2>/dev/null | grep -qiE "server: cloudflare|cf-ray"; then
+                echo -e " ${gray}跳过${none} $sni (Cloudflare CDN 拦截)"
+                continue
+            fi
+            
+            local doh_res=$(curl -s --connect-timeout 2 "https://dns.alidns.com/resolve?name=$sni&type=1" 2>/dev/null || echo "")
+            local dns_cn=""
+            if test -n "$doh_res"; then
+                dns_cn=$(echo "$doh_res" | jq -r '.Answer[]? | select(.type==1 or .type==5) | .data' 2>/dev/null | tail -n 1 || echo "")
+            fi
+            
+            local status_cn=""
+            local p_type="NORM"
+            
+            if test -z "$dns_cn" || test "$dns_cn" = "127.0.0.1" || test "$dns_cn" = "0.0.0.0" || test "$dns_cn" = "::1" || test "$dns_cn" = "null"; then
+                status_cn="${red}国内墙阻断 (DNS投毒)${none}"
+                p_type="BLOCK"
+            else
+                local loc=$(curl -s --connect-timeout 2 "https://ipinfo.io/$dns_cn/country" 2>/dev/null | tr -d ' \n' || echo "")
+                if test "$loc" = "CN"; then
+                    status_cn="${green}直通${none} | ${blue}中国境内 CDN${none}"
+                    p_type="CN_CDN"
+                else
+                    status_cn="${green}直通${none} | ${cyan}海外原生优质${none}"
+                    p_type="NORM"
+                fi
+            fi
+            
+            echo -e " ${green}存活${none} $sni : ${yellow}${ms}ms${none} | $status_cn"
+            if test "$p_type" != "BLOCK"; then echo "$ms $sni $p_type" >> "$tmp_sni"; fi
+        fi
+        set -e
+    done
+
+    if test -s "$tmp_sni"; then
+        grep " NORM$" "$tmp_sni" | sort -n | head -n 20 | awk '{print $2, $1}' > "$SNI_CACHE_FILE" || true
+        local count=$(wc -l < "$SNI_CACHE_FILE" 2>/dev/null || echo "0")
+        if test "${count:-0}" -lt 20 2>/dev/null; then
+            local need_fill=$(( 20 - ${count:-0} ))
+            grep "CN_CDN" "$tmp_sni" | sort -n | head -n "$need_fill" | awk '{print $2, $1}' >> "$SNI_CACHE_FILE" || true
+        fi
+    else
+        print_red "探测全灭，采用微软作为保底方案。"
+        echo "www.microsoft.com 999 NORM" > "$SNI_CACHE_FILE"
+    fi
+    rm -f "$tmp_sni" 2>/dev/null || true
+}
+
+verify_sni_strict() {
+    local target="$1"
+    print_magenta "\n>>> 正在对目标 SNI [$target] 开启严苛质检 (TLS 1.3 + ALPN h2 + OCSP)..."
+    set +e
+    local out=$(echo "Q" | timeout 5 openssl s_client -connect "$target:443" -alpn h2 -tls1_3 -status 2>&1 || echo "")
+    set -e
+    local pass=1
+    if ! echo "$out" | grep -qi "TLSv1.3"; then print_red " ✗ 质检拦截: 目标服务器不支持 TLS v1.3 协议"; pass=0; fi
+    if ! echo "$out" | grep -qiE "ALPN, server accepted to use h2|ALPN.*h2"; then print_red " ✗ 质检拦截: 目标服务器不支持 ALPN h2 协商"; pass=0; fi
+    if ! echo "$out" | grep -qi "OCSP response:"; then print_red " ✗ 质检拦截: 目标服务器未配置 OCSP Stapling 证书状态装订"; pass=0; fi
+    if test "$pass" -eq 0; then warn "结论：该目标指纹残缺，易遭墙探！"; return 1; else info "结论：目标完美通过三项高维特征审核！"; return 0; fi
+}
+
+choose_sni() {
+    while true; do
+        if test -f "$SNI_CACHE_FILE"; then
+            echo -e "\n  ${cyan}【战备缓存：极速 Top 20 (已剔除阻断节点)】${none}"
+            local idx=1
+            while read -r s t p; do
+                echo -e "  $idx) $s (TCP 延迟: ${cyan}${t}ms${none})"
+                idx=$((idx + 1))
+            done < "$SNI_CACHE_FILE"
+            
+            echo -e "  ${yellow}r) 抛弃缓存重新运行雷达扫描${none}"
+            echo "  m) 启用多选模式 (输入多个序号，构建多域名矩阵)"
+            echo "  0) 手动输入自定义私有域名"
+            echo "  q) 取消并退回上级"
+            
+            local sel=""
+            read -rp "  请选择对应操作或节点序号 (默认 1): " sel || true
+            sel=${sel:-1}
+            
+            if test "$sel" = "q" || test "$sel" = "Q"; then return 1; fi
+            if test "$sel" = "r" || test "$sel" = "R"; then run_sni_scanner; continue; fi
+            if test "$sel" = "m" || test "$sel" = "M"; then
+                local m_sel=""
+                read -rp "请输入所需序号 (空格分隔, 如 1 3 5，或输入 all 全选): " m_sel || true
+                local arr=()
+                if test "$m_sel" = "all"; then
+                    while read -r p_sni p_rest; do
+                        if test -n "$p_sni"; then arr+=("$p_sni"); fi
+                    done < "$SNI_CACHE_FILE"
+                else
+                    for i in $m_sel; do
+                        local picked=$(awk "NR==$i {print \$1}" "$SNI_CACHE_FILE" 2>/dev/null || echo "")
+                        if test -n "$picked"; then arr+=("$picked"); fi
+                    done
+                fi
+                if test "${#arr[@]}" -eq 0; then error "选择无效，未能解析到有效的 SNI 目标，请重新输入。"; continue; fi
+                BEST_SNI="${arr[0]}"
+                local jq_args=()
+                for s in "${arr[@]}"; do jq_args+=("\"$s\""); done
+                SNI_JSON_ARRAY=$(IFS=,; echo "${jq_args[*]}")
+            else
+                if test "$sel" = "0"; then 
+                    local d=""
+                    read -rp "请输入您指定的自定义域名: " d || true
+                    BEST_SNI=${d:-www.microsoft.com}
+                    SNI_JSON_ARRAY="\"$BEST_SNI\""
+                else
+                    local picked=""
+                    if [[ "$sel" =~ ^[0-9]+$ ]]; then picked=$(awk "NR==$sel {print \$1}" "$SNI_CACHE_FILE" 2>/dev/null || echo ""); fi
+                    if test -n "$picked"; then
+                        BEST_SNI="$picked"
+                    else
+                        error "输入有误，已自动降级为您分配第一号测速节点。"
+                        BEST_SNI=$(awk "NR==1 {print \$1}" "$SNI_CACHE_FILE" 2>/dev/null || echo "www.microsoft.com")
+                    fi
+                    SNI_JSON_ARRAY="\"$BEST_SNI\""
+                fi
+            fi
+
+            if verify_sni_strict "$BEST_SNI"; then
+                print_green ">>> 质检完毕：主控目标 $BEST_SNI 完美通过特征审查！"
+                break
+            else
+                print_yellow ">>> 危险预警：域名质检不达标，若强行部署会导致 Reality 极易被墙或断流！"
+                local force_use=""
+                read -rp "是否无视警告，强制使用该域名？(y/n): " force_use || true
+                if [[ "$force_use" =~ ^[yY]$ ]]; then warn "您已授权强制越过安检防线，配置继续。"; break; else continue; fi
+            fi
+        else
+            warn "未能发现本地域名测速快照，正在为您唤醒扫描雷达..."
+            run_sni_scanner
+        fi
+    done
+    return 0
+}
+# ------------------------------------------------------------------------------
+# [ 0x06: Swap 虚拟内存防爆模块 ]
+# ------------------------------------------------------------------------------
+
+check_and_create_1gb_swap() {
+    title "检查物理 Swap 分区状态"
+    local SWAP_FILE="/swapfile"
+    local CURRENT_SWAP=""
+    
+    set +e
+    CURRENT_SWAP=$(swapon --show=NAME,KBYTES --noheadings 2>/dev/null | grep "$SWAP_FILE" | awk '{print $2}' || echo "")
+    set -e
+    
+    if test -n "$CURRENT_SWAP" && test "$CURRENT_SWAP" -ge 1000000 2>/dev/null; then
+        info "系统已配置足量的 Swap 分区 (≥1GB)。"
+        return
+    fi
+    
+    warn "未检测到足量 Swap，正在强行切辟 1GB Swap 缓冲分区以防编译时内存爆闪..."
+    swapoff -a 2>/dev/null || true
+    sed -i '/swapfile/d' /etc/fstab 2>/dev/null || true
+    rm -f "$SWAP_FILE" 2>/dev/null || true
+    dd if=/dev/zero of="$SWAP_FILE" bs=1M count=1024 status=none 2>/dev/null || true
+    chmod 600 "$SWAP_FILE" 2>/dev/null || true
+    mkswap "$SWAP_FILE" >/dev/null 2>&1 || true
+    swapon "$SWAP_FILE" >/dev/null 2>&1 || true
+    echo "$SWAP_FILE none swap sw 0 0" >> /etc/fstab 2>/dev/null || true
+    info "Swap 缓冲池配置完成。"
+}
+
+# ------------------------------------------------------------------------------
+# 【系统重建 1】：预编译官方 XANMOD 部署模块 (破壁降级引擎与 GPG 安全防爆)
+# ------------------------------------------------------------------------------
+
+do_install_xanmod_main_official() {
+    title "系统飞升：安装预编译 XANMOD 内核 (纯净官方源保护)"
+    
+    local arch=$(uname -m 2>/dev/null || echo "")
+    if test "$arch" != "x86_64"; then
+        error "系统架构不匹配：仅支持 x86_64！"
+        local _p=""; read -rp "按 Enter 返回..." _p || true
+        return 1
+    fi
+    
+    if test ! -f /etc/debian_version; then
+        error "系统发行版排斥：官方预编译 Xanmod 仓库目前仅兼容 Debian / Ubuntu 系！"
+        local _p=""; read -rp "按 Enter 返回..." _p || true
+        return 1
+    fi
+
+    info "正在拉取智能探针，检测本地 CPU 硬件微架构支持级别..."
+    local cpu_level_script="/tmp/check_x86-64_psabi.sh"
+    
+    set +e
+    if ! wget -qO "$cpu_level_script" https://dl.xanmod.org/check_x86-64_psabi.sh 2>/dev/null; then
+        warn "探针脚本下载遇到网络波动，将跳过精准检测。"
+    fi
+    
+    local cpu_level=""
+    if test -f "$cpu_level_script"; then
+        chmod +x "$cpu_level_script" 2>/dev/null || true
+        cpu_level=$(awk -f "$cpu_level_script" 2>/dev/null | grep -oE 'x86-64-v[1-4]' | grep -oE '[1-4]' | tail -n 1 || echo "")
+        rm -f "$cpu_level_script" 2>/dev/null || true
+    fi
+    set -e
+    
+    if test -z "$cpu_level"; then
+        cpu_level=1
+        warn "未能精确检测 CPU 微架构级别，将默认降级使用系统最宽容的 v1 兼容版本。"
+    else
+        info "评估完成，当前 CPU 硬件完美支持的微架构最高级别为: v${cpu_level}"
+    fi
+
+    info "正在配置 Xanmod 官方最高优 APT 仓库与防伪 Keyring..."
+    export DEBIAN_FRONTEND=noninteractive
+    
+    set +e
+    apt-get update -y >/dev/null 2>&1
+    apt-get install -y gnupg gnupg2 gnupg1 curl sudo wget e2fsprogs ca-certificates lsb-release apt-transport-https >/dev/null 2>&1
+
+    mkdir -p /usr/share/keyrings 2>/dev/null
+    rm -f /etc/apt/trusted.gpg.d/xanmod-*.gpg /etc/apt/sources.list.d/xanmod-*.list /etc/apt/sources.list.d/xanmod-*.sources 2>/dev/null
+    sed -i '/deb.xanmod.org/d' /etc/apt/sources.list 2>/dev/null
+    
+    if ! curl -fsSL https://dl.xanmod.org/gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/xanmod-archive-keyring.gpg 2>/dev/null; then
+        error "从远端获取 GPG 密钥链发生错误，官方源可能受限！"
+        set -e; return 1
+    fi
+    
+    echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' | tee /etc/apt/sources.list.d/xanmod-release.list >/dev/null
+
+    info "正在触发 APT 智能降级寻址阵列 (容错同步中)..."
+    apt-get update -y >/dev/null 2>&1 || warn "APT 源刷新遇到轻微异常，尝试继续向后寻址..."
+    
+    local pkg_name=""
+    local installed=false
+    
+    for ((v=$cpu_level; v>=1; v--)); do
+        local try_pkg="linux-xanmod-x64v${v}"
+        info "正在尝试拉取并部署包: $try_pkg ..."
+        if apt-get install -y "$try_pkg" >/dev/null 2>&1; then
+            pkg_name="$try_pkg"
+            installed=true
+            break
+        fi
+        warn "源内未命中或阻断 $try_pkg，触发自动降级探测 v$((v-1)) ..."
+    done
+    
+    if test "$installed" = "false"; then
+        warn "标准架构包名全线脱靶，正在唤醒 APT 模糊寻址雷达..."
+        local alt_pkg=$(apt-cache search "linux-image-.*xanmod" | grep -vE "dbg|headers" | awk '{print $1}' | sort -V | tail -n 1 || echo "")
+        if test -n "$alt_pkg"; then
+            info "成功修正坐标！锁定兼容内核包: $alt_pkg"
+            if apt-get install -y "$alt_pkg" >/dev/null 2>&1; then
+                pkg_name="$alt_pkg"
+                installed=true
+            fi
+        fi
+    fi
+    
+    if test "$installed" = "false"; then
+        error "保底寻址宣告失败！当前系统源无法解析到任何合法的 Xanmod 预编译包。"
+        local _p=""; read -rp "按 Enter 继续..." _p || true
+        set -e; return 1
+    fi
+    set -e
+
+    info "预编译核心注入成功，正在重载 GRUB 引导..."
+    if command -v update-grub >/dev/null 2>&1; then
+        update-grub >/dev/null 2>&1 || true
+    else
+        apt-get install -y grub2-common >/dev/null 2>&1 || true
+        update-grub >/dev/null 2>&1 || true
+    fi
+
+    info "官方预编译 XANMOD 部署与注册已全部就绪！"
+    warn "系统将在 10 秒后强制重启应用新内核..."
+    sleep 10
+    reboot
+}
+
+# ------------------------------------------------------------------------------
+# 【系统重建 2】：主线内核 (Mainline) 编译 + BBR3 (回归 ex100 极客稳健流)
+# ------------------------------------------------------------------------------
+
+do_xanmod_compile() {
+    title "系统飞升：编译安装 Mainline 主线内核 + BBR3 (绝缘防爆版)"
+    warn "警告: 这是一个极其漫长的过程 (30-60分钟)，低配机极易引发死机断连！强烈建议优先使用菜单 2 的官方预编译版。"
+    
+    local confirm=""
+    read -rp "确定要执意开始源码编译吗？(y/n): " confirm || true
+    if [[ ! "$confirm" =~ ^[yY]$ ]]; then return; fi
+
+    info "=== 开始执行深度系统清理与模块解容 ==="
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get clean >/dev/null 2>&1 || true
+    apt-get autoremove -y --purge >/dev/null 2>&1 || true
+    journalctl --vacuum-time=1d >/dev/null 2>&1 || true
+    rm -rf /var/log/*.log /var/log/*/*.log /tmp/* /var/lib/docker/* /usr/src/linux* /usr/src/bbr* /usr/src/xanmod* /compile/* /root/linux* /root/*.tar* /root/*.xz 2>/dev/null || true
+    sync
+
+    local inode_use=$(df -i / 2>/dev/null | awk 'NR==2{print $5}' | tr -d '%' || echo "0")
+    if test "$inode_use" -gt 90 2>/dev/null; then
+        apt-get clean >/dev/null 2>&1 || true
+        rm -rf /var/cache/* 2>/dev/null || true
+    fi
+
+    check_and_create_1gb_swap
+
+    local root_free=$(df -m / 2>/dev/null | awk 'NR==2{print $4}' || echo "0")
+    local BUILD_DIR=""
+    if test "$root_free" -gt 4000 2>/dev/null; then 
+        mkdir -p /compile 2>/dev/null || true
+        BUILD_DIR="/compile"
+    else 
+        BUILD_DIR="/usr/src"
+    fi
+
+    info "=== 拉取核心编译套件 ==="
+    apt-get update -y >/dev/null 2>&1 || true
+    apt-get install -y build-essential bc bison flex libssl-dev libelf-dev libncurses-dev zstd git wget curl xz-utils ethtool numactl make pkg-config dwarves rsync python3 libdw-dev cpio >/dev/null 2>&1 || true
+
+    local CPU=$(nproc 2>/dev/null || echo 1)
+    local RAM=$(free -m 2>/dev/null | awk '/Mem/{print $2}' || echo 1024)
+    local THREADS=1
+    if test "$RAM" -ge 2000 2>/dev/null; then THREADS=$CPU; fi
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+
+    if ! cd "$BUILD_DIR"; then die "权限异常：系统拒绝切入工作区 $BUILD_DIR。"; fi
+
+    info "=== 动态溯源 Kernel.org 主线源码 ==="
+    set +e
+    local KERNEL_URL=$(curl -s https://www.kernel.org/releases.json 2>/dev/null | grep -A3 '"is_latest": true' | grep tarball | head -1 | awk -F'"' '{print $4}' || echo "")
+    if test -z "$KERNEL_URL" || test "$KERNEL_URL" = "null"; then 
+        warn "动态获取失败，回退至稳定兜底版本。"
+        KERNEL_URL="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.8.tar.xz"
+    fi
+    set -e
+    
+    local KERNEL_FILE=$(basename "$KERNEL_URL")
+    info "正在拉取主线源码包: $KERNEL_FILE"
+    wget -q --show-progress "$KERNEL_URL" -O "$KERNEL_FILE"
+
+    set +o pipefail
+    if ! tar -tJf "$KERNEL_FILE" >/dev/null 2>&1; then
+        warn "压缩包校验失败，正在重试..."
+        rm -f "$KERNEL_FILE" 2>/dev/null || true
+        wget -q --show-progress "$KERNEL_URL" -O "$KERNEL_FILE"
+        if ! tar -tJf "$KERNEL_FILE" >/dev/null 2>&1; then
+            error "源码包彻底损坏，编译中止。"
+            set -e; return 1
+        fi
+    fi
+    set -o pipefail
+
+    info "正在执行极限解压..."
+    tar -xJf "$KERNEL_FILE"
+    local KERNEL_DIR=$(tar -tf "$KERNEL_FILE" | head -1 | cut -d/ -f1)
+    if ! cd "$KERNEL_DIR"; then die "解压后目录切入失败。"; fi
+
+    info "=== 生成并清洗内核配置 (BBR3 & 驱动精简) ==="
+    make defconfig >/dev/null 2>&1 || true
+    make scripts >/dev/null 2>&1 || true
+    
+    ./scripts/config --enable CONFIG_TCP_CONG_BBR 2>/dev/null || true
+    ./scripts/config --enable CONFIG_DEFAULT_BBR 2>/dev/null || true
+    ./scripts/config --enable CONFIG_TCP_BBR3 2>/dev/null || true
+    ./scripts/config --disable CONFIG_DRM_I915 2>/dev/null || true
+    ./scripts/config --disable CONFIG_NET_VENDOR_REALTEK 2>/dev/null || true
+    ./scripts/config --disable CONFIG_NET_VENDOR_BROADCOM 2>/dev/null || true
+    ./scripts/config --disable CONFIG_E100 2>/dev/null || true
+    
+    yes "" | make olddefconfig >/dev/null 2>&1 || true
+
+    info "=== 开启多核并发编译 (线程数: $THREADS) ==="
+    if ! make -j"$THREADS"; then
+        error "编译线程彻底崩塌！请排查物理内存是否溢出。"
+        local _p=""; read -rp "按 Enter 返回主菜单..." _p || true
+        return 1
+    fi
+
+    info "编译成功！正在安装内核模块..."
+    make modules_install >/dev/null 2>&1 || true
+    make install >/dev/null 2>&1 || true
+
+    local CURRENT=$(uname -r 2>/dev/null || echo "")
+    if test -n "$CURRENT"; then
+        dpkg --list 2>/dev/null | grep linux-image | awk '{print $2}' | grep -v "$CURRENT" | xargs -r apt-get -y purge >/dev/null 2>&1 || true
+        find /lib/modules -mindepth 1 -maxdepth 1 -type d 2>/dev/null | grep -v "$CURRENT" | xargs -r rm -rf >/dev/null 2>&1 || true
+    fi
+    update-grub >/dev/null 2>&1 || true
+
+    info "=== 注入网卡与 RPS 软中断特化守护进程 ==="
+    if test -n "$IFACE"; then
+        cat > /usr/local/bin/nic-optimize.sh <<EOF_NIC
+#!/bin/bash
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+IFACE="$IFACE"
+ethtool -K \$IFACE gro off gso off tso off lro off rx-gro-hw off tx-udp-segmentation on 2>/dev/null || true
+ethtool -C \$IFACE adaptive-rx off rx-usecs 0 tx-usecs 0 2>/dev/null || true
+EOF_NIC
+        chmod +x /usr/local/bin/nic-optimize.sh 2>/dev/null || true
+
+        cat > /etc/systemd/system/nic-optimize.service <<'EOSERVICE'
+[Unit]
+Description=NIC Hardware Optimization
+After=network.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nic-optimize.sh
+TimeoutSec=30
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+EOSERVICE
+
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl enable nic-optimize.service >/dev/null 2>&1 || true
+        systemctl start nic-optimize.service >/dev/null 2>&1 || true
+
+        local RXMAX=$(ethtool -g "$IFACE" 2>/dev/null | awk '/RX:/ {print $2; exit}' || echo "")
+        if test -n "$RXMAX"; then ethtool -G "$IFACE" rx "$RXMAX" tx "$RXMAX" 2>/dev/null || true; fi
+
+        local CPU_MASK=$(printf "%x" $(( (1<<CPU)-1 )))
+        cat > /usr/local/bin/rps-optimize.sh <<EOF_RPS
+#!/bin/bash
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+IFACE="$IFACE"
+CPU_MASK="$CPU_MASK"
+RX_QUEUES=\$(ls -d /sys/class/net/\$IFACE/queues/rx-* 2>/dev/null | wc -l || echo 0)
+for RX in /sys/class/net/\$IFACE/queues/rx-*; do
+    if test -w "\$RX/rps_cpus"; then echo "\$CPU_MASK" > "\$RX/rps_cpus" 2>/dev/null || true; fi
+done
+for TX in /sys/class/net/\$IFACE/queues/tx-*; do
+    if test -w "\$TX/xps_cpus"; then echo "\$CPU_MASK" > "\$TX/xps_cpus" 2>/dev/null || true; fi
+done
+sysctl -w net.core.rps_sock_flow_entries=131072 >/dev/null 2>&1 || true
+if test "\$RX_QUEUES" -gt 0 2>/dev/null; then
+    FLOW_PER_QUEUE=\$((65535 / RX_QUEUES))
+    for RX in /sys/class/net/\$IFACE/queues/rx-*; do
+        if test -w "\$RX/rps_flow_cnt"; then echo "\$FLOW_PER_QUEUE" > "\$RX/rps_flow_cnt" 2>/dev/null || true; fi
+    done
+fi
+EOF_RPS
+        chmod +x /usr/local/bin/rps-optimize.sh 2>/dev/null || true
+
+        cat > /etc/systemd/system/rps-optimize.service <<'EOF_RPS_SRV'
+[Unit]
+Description=RPS RFS Network CPU Optimization
+After=network.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/rps-optimize.sh
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+EOF_RPS_SRV
+
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl enable rps-optimize.service >/dev/null 2>&1 || true
+        systemctl start rps-optimize.service >/dev/null 2>&1 || true
+
+        for irq in $(grep "$IFACE" /proc/interrupts 2>/dev/null | awk '{print $1}' | tr -d ':' || true); do 
+            if test -w "/proc/irq/$irq/smp_affinity"; then echo "$CPU_MASK" > "/proc/irq/$irq/smp_affinity" 2>/dev/null || true; fi
+        done
+    fi
+
+    cd /
+    rm -rf "$BUILD_DIR/linux-"* "$BUILD_DIR/$KERNEL_FILE" /compile/* /root/linux* 2>/dev/null || true
+    
+    info "内核编译与网卡优化已全部就绪！系统将在 30 秒后自动重启应用更改..."
+    sleep 30
+    reboot
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x09: 系统内核网络栈极限压榨 (V62 全量 60+ 项网络栈阵列调优) ]
+# ------------------------------------------------------------------------------
+
+do_perf_tuning() {
+    title "极客压榨：全域系统底层网络栈结构重塑"
+    warn "警告: 此操作将深度注入内核级极限并发参数，执行完毕必须重启宿主机！"
+    
+    local confirm=""
+    read -rp "确定要继续吗？(y/n): " confirm || true
+    if test "$confirm" != "y"; then
+        if test "$confirm" != "Y"; then
+            return
+        fi
+    fi
+    
+    local current_scale=$(sysctl -n net.ipv4.tcp_adv_win_scale 2>/dev/null || echo "1")
+    local current_app=$(sysctl -n net.ipv4.tcp_app_win 2>/dev/null || echo "31")
+    
+    echo -e "  当前 tcp_adv_win_scale: ${cyan}${current_scale}${none} (建议 1 或 2)"
+    echo -e "  当前 tcp_app_win: ${cyan}${current_app}${none} (建议 31)"
+    
+    local new_scale=""
+    read -rp "设置 tcp_adv_win_scale (-2 到 2，直接回车保留当前): " new_scale || true
+    if test -z "$new_scale"; then new_scale="$current_scale"; fi
+    
+    local new_app=""
+    read -rp "设置 tcp_app_win (1 到 31，直接回车保留当前): " new_app || true
+    if test -z "$new_app"; then new_app="$current_app"; fi
+
+    info "清理历史及冗余的网络优化配置..."
+    systemctl stop net-speeder >/dev/null 2>&1 || true
+    killall net-speeder >/dev/null 2>&1 || true
+    systemctl disable net-speeder >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/net-speeder.service /etc/systemd/system/multi-user.target.wants/net-speeder.service 2>/dev/null || true
+    systemctl daemon-reload >/dev/null 2>&1 || true
+
+    truncate -s 0 /etc/sysctl.conf 2>/dev/null || true
+    truncate -s 0 /etc/sysctl.d/99-sysctl.conf 2>/dev/null || true
+    truncate -s 0 /etc/sysctl.d/99-network-optimized.conf 2>/dev/null || true
+    rm -f /etc/sysctl.d/99-bbr*.conf /etc/sysctl.d/99-ipv6-disable.conf /etc/sysctl.d/99-pro*.conf /etc/sysctl.d/99-xanmod-bbr3.conf /usr/lib/sysctl.d/50-pid-max.conf /usr/lib/sysctl.d/99-protect-links.conf 2>/dev/null || true
+
+    info "配置系统高并发进程限制 (Limits)..."
+    cat > /etc/security/limits.conf << 'EOF'
+root soft nofile 1000000
+root hard nofile 1000000
+root soft nproc 1000000
+root hard nproc 1000000
+root soft core 1000000
+root hard core 1000000
+root soft stack 1000000
+root hard stack 1000000
+
+* soft nofile 1000000
+* hard nofile 1000000
+* soft nproc 1000000
+* hard nproc 1000000
+* soft core 1000000
+* hard core 1000000
+* soft stack 1000000
+* hard stack 1000000
+EOF
+
+    if ! grep -q "pam_limits.so" /etc/pam.d/common-session 2>/dev/null; then
+        echo "session required pam_limits.so" >> /etc/pam.d/common-session
+    fi
+    if ! grep -q "pam_limits.so" /etc/pam.d/common-session-noninteractive 2>/dev/null; then
+        echo "session required pam_limits.so" >> /etc/pam.d/common-session-noninteractive
+    fi
+    
+    sed -i '/DefaultLimitNOFILE/d' /etc/systemd/system.conf 2>/dev/null || true
+    sed -i '/DefaultLimitNPROC/d' /etc/systemd/system.conf 2>/dev/null || true
+    echo "DefaultLimitNOFILE=1000000" >> /etc/systemd/system.conf
+    echo "DefaultLimitNPROC=1000000" >> /etc/systemd/system.conf
+
+    local target_qdisc="fq"
+    local cake_state="false"
+    if sysctl net.core.default_qdisc 2>/dev/null | grep -q 'cake'; then cake_state="true"; fi
+    if test "$cake_state" = "true"; then target_qdisc="cake"; fi
+
+    info "写入内核 Sysctl 参数..."
+    cat > /etc/sysctl.d/99-network-optimized.conf << EOF
+net.core.default_qdisc = ${target_qdisc}
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.neigh.default.base_reachable_time_ms = 60000
+net.ipv4.neigh.default.mcast_solicit = 2
+net.ipv4.neigh.default.retrans_time_ms = 500
+net.ipv4.conf.all.rp_filter = 0
+net.ipv4.conf.default.rp_filter = 0
+net.ipv4.tcp_no_metrics_save = 1
+net.ipv4.tcp_ecn = 1
+net.ipv4.tcp_ecn_fallback = 1
+net.ipv4.tcp_mtu_probing = 1
+net.ipv4.tcp_rfc1337 = 1
+net.ipv4.tcp_sack = 1
+net.ipv4.tcp_window_scaling = 1
+net.ipv4.tcp_adv_win_scale = ${new_scale}
+net.ipv4.tcp_app_win = ${new_app}
+net.ipv4.tcp_moderate_rcvbuf = 1
+
+net.core.rmem_default = 560576
+net.core.wmem_default = 560576
+net.core.rmem_max = 21699928
+net.core.wmem_max = 21699928
+net.ipv4.tcp_rmem = 4096 760576 21699928
+net.ipv4.tcp_wmem = 4096 760576 21699928
+net.ipv4.udp_rmem_min = 4096
+net.ipv4.udp_wmem_min = 4096
+
+net.core.dev_weight = 64
+net.core.dev_weight_tx_bias = 1
+net.core.dev_weight_rx_bias = 1
+net.core.netdev_budget = 300
+
+net.ipv4.igmp_max_memberships = 200
+net.ipv4.route.flush = 1
+net.ipv4.tcp_slow_start_after_idle = 0
+
+vm.swappiness = 1
+fs.file-max = 1048576
+fs.nr_open = 1048576
+fs.inotify.max_user_instances = 262144
+
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_fin_timeout = 12
+net.ipv4.tcp_keepalive_probes = 5
+net.ipv4.tcp_keepalive_time = 60
+net.ipv4.tcp_keepalive_intvl = 30
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_abort_on_overflow = 0
+net.ipv4.ip_local_port_range = 1024 65535
+net.ipv4.tcp_max_syn_backlog = 65535
+net.ipv4.tcp_max_tw_buckets = 262144
+net.ipv4.tcp_retries1 = 5
+net.ipv4.tcp_retries2 = 8
+net.ipv4.tcp_syn_retries = 3
+net.ipv4.tcp_synack_retries = 2
+
+net.core.somaxconn = 65535
+net.core.netdev_max_backlog = 65535
+net.ipv4.tcp_timestamps = 1
+net.ipv4.tcp_max_orphans = 262144
+net.core.optmem_max = 3276800
+net.ipv4.tcp_fastopen = 3
+net.ipv4.tcp_reordering = 3
+net.ipv4.tcp_autocorking = 0
+net.ipv4.tcp_tso_win_divisor = 6
+
+kernel.pid_max = 4194304
+kernel.threads-max = 85536
+net.ipv4.neigh.default.gc_thresh1 = 1024
+net.ipv4.neigh.default.gc_thresh2 = 4096
+net.ipv4.neigh.default.gc_thresh3 = 8192
+net.ipv4.neigh.default.gc_stale_time = 100
+net.ipv4.conf.default.arp_announce = 2
+net.ipv4.conf.lo.arp_announce = 2
+net.ipv4.conf.all.arp_announce = 2
+net.unix.max_dgram_qlen = 130000
+
+net.core.busy_poll = 50
+net.core.busy_read = 0
+net.ipv4.tcp_notsent_lowat = 16384
+
+vm.vfs_cache_pressure = 10
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.ip_forward = 1
+net.ipv4.conf.all.arp_ignore = 1
+net.ipv4.tcp_early_retrans = 3
+net.ipv4.neigh.default.unres_qlen = 35535
+net.ipv4.conf.all.route_localnet = 0
+net.ipv4.tcp_orphan_retries = 8
+net.ipv4.conf.all.forwarding = 1
+
+net.ipv4.ipfrag_max_dist = 32
+net.ipv4.ipfrag_secret_interval = 200
+net.ipv4.ipfrag_low_thresh = 42008868
+net.ipv4.ipfrag_high_thresh = 104917729
+net.ipv4.ipfrag_time = 30
+
+fs.aio-max-nr = 262144
+kernel.msgmax = 655350
+kernel.msgmnb = 655350
+net.ipv4.neigh.default.proxy_qlen = 50000
+net.ipv4.tcp_pacing_ca_ratio = 150
+net.ipv4.tcp_pacing_ss_ratio = 210
+fs.protected_fifos = 1
+fs.protected_hardlinks = 1
+fs.protected_regular = 2
+fs.protected_symlinks = 1
+
+net.core.rps_sock_flow_entries = 131072
+net.core.flow_limit_table_len = 131072
+net.ipv4.tcp_workaround_signed_windows = 1
+vm.dirty_ratio = 35
+vm.overcommit_memory = 0
+kernel.sysrq = 1
+
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+
+vm.max_map_count = 65535
+net.ipv4.tcp_child_ehash_entries = 65535
+net.ipv4.ip_no_pmtu_disc = 0
+net.ipv4.tcp_stdurg = 0
+net.ipv4.tcp_challenge_ack_limit = 1200
+net.ipv4.tcp_comp_sack_delay_ns = 50000
+net.ipv4.tcp_comp_sack_nr = 1
+net.ipv4.tcp_fwmark_accept = 1
+net.ipv4.tcp_invalid_ratelimit = 800
+net.ipv4.tcp_l3mdev_accept = 1
+
+net.core.tstamp_allow_data = 1
+net.core.netdev_tstamp_prequeue = 1
+kernel.randomize_va_space = 2
+
+net.ipv4.tcp_mem = 65536 131072 262144
+net.ipv4.udp_mem = 65536 131072 262144
+net.ipv4.tcp_recovery = 0x1
+net.ipv4.tcp_dsack = 1
+
+kernel.shmmax = 67108864
+kernel.shmall = 16777216
+
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+net.ipv4.icmp_ignore_bogus_error_responses = 1
+net.ipv4.tcp_limit_output_bytes = 1310720
+net.ipv4.tcp_min_tso_segs = 1
+net.ipv4.tcp_thin_linear_timeouts = 0
+net.ipv4.tcp_early_demux = 1
+net.ipv4.tcp_shrink_window = 0
+net.ipv4.neigh.default.unres_qlen_bytes = 65535
+kernel.printk = 3 4 1 3
+kernel.sched_autogroup_enabled = 0
+EOF
+
+    if ! sysctl -p /etc/sysctl.d/99-network-optimized.conf >/dev/null 2>&1; then
+        error "Sysctl 参数应用存在错误，部分硬件或系统环境不支持。"
+        local _p=""; read -rp "按 Enter 返回菜单..." _p || true
+        return 1
+    else
+        info "所有底层 Sysctl 参数已成功应用。"
+    fi
+    
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if test -n "$IFACE"; then
+        info "配置网卡驱动硬件卸载与 CPU 软中断分发 ($IFACE)..."
+        
+        cat > /usr/local/bin/nic-optimize.sh <<EOF_NIC
+#!/bin/bash
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+IFACE="$IFACE"
+ethtool -K \$IFACE gro off gso off tso off lro off rx-gro-hw off tx-udp-segmentation on 2>/dev/null || true
+ethtool -C \$IFACE adaptive-rx off rx-usecs 0 tx-usecs 0 2>/dev/null || true
+EOF_NIC
+        chmod +x /usr/local/bin/nic-optimize.sh 2>/dev/null || true
+        
+        cat > /etc/systemd/system/nic-optimize.service << 'EOSERVICE'
+[Unit]
+Description=NIC Advanced Tuning
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nic-optimize.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOSERVICE
+
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl enable nic-optimize.service >/dev/null 2>&1 || true
+        systemctl restart nic-optimize.service >/dev/null 2>&1 || true
+        tc qdisc replace dev "$IFACE" root fq >/dev/null 2>&1 || true
+    fi
+    
+    info "极限低延迟参数注入完成！系统将在 30 秒后自动重启以生效..."
+    sleep 30
+    reboot
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x0A: 网卡发送队列调优与 CAKE 参数高级配置 ]
+# ------------------------------------------------------------------------------
+
+do_txqueuelen_opt() {
+    title "网卡发送队列 (TX Queue) 物理调优"
+    local IP_CMD=$(command -v ip || echo "")
+    if test -z "$IP_CMD"; then
+        error "系统缺失 iproute2 (ip 命令) 核心组件，无法调节网卡。"
+        local _p=""; read -rp "按 Enter 返回..." _p || true
+        return 1
+    fi
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if test -z "$IFACE"; then
+        error "无法定位系统默认出口网卡，操作中止。"
+        local _p=""; read -rp "按 Enter 返回..." _p || true
+        return 1
+    fi
+    info "强行扩张 $IFACE 发送队列长度至 2000..."
+    $IP_CMD link set "$IFACE" txqueuelen 2000 2>/dev/null || true
+    
+    cat > /etc/systemd/system/txqueue.service << EOF
+[Unit]
+Description=Set TX Queue Length for Performance Optimization
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=$IP_CMD link set $IFACE txqueuelen 2000
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl enable txqueue >/dev/null 2>&1 || true
+    systemctl start txqueue >/dev/null 2>&1 || true
+    
+    local CHECK_QLEN=$($IP_CMD link show "$IFACE" 2>/dev/null | grep -o 'qlen [0-9]*' | awk '{print $2}' || echo "")
+    if test "$CHECK_QLEN" = "2000"; then info "已成功将网卡底层并发队列长度扩容至 2000 级。"; else warn "修改失败！当前虚拟机或网卡驱动不支持调节 txqueuelen 队列长度。"; fi
+    local _p=""; read -rp "按 Enter 键返回主菜单..." _p || true
+}
+
+config_cake_advanced() {
+    clear
+    title "CAKE 拥塞调度器高级微操配置"
+    local current_opts="未配置 (系统自适应默认)"
+    if test -f "$CAKE_OPTS_FILE"; then current_opts=$(cat "$CAKE_OPTS_FILE" 2>/dev/null || echo ""); fi
+    echo -e "  当前运行参数: ${cyan}${current_opts}${none}\n"
+    
+    local c_bw=""; read -rp "  [1] 声明物理带宽限制 (例如 900Mbit，填 0 取消限制): " c_bw || true
+    local c_oh=""; read -rp "  [2] 配置底层报文开销补偿 Overhead (填 0 取消限制): " c_oh || true
+    local c_mpu=""; read -rp "  [3] 最小数据单元截断 MPU (填 0 取消限制): " c_mpu || true
+    
+    echo "  [4] RTT 延迟模型: "
+    echo "    1) internet  (标准互联 85ms)"
+    echo "    2) oceanic   (跨洋海缆 300ms)"
+    echo "    3) satellite (卫星链路 1000ms)"
+    local rtt_sel=""; read -rp "  请选择 (默认 2): " rtt_sel || true
+    local c_rtt=""
+    case "${rtt_sel:-2}" in
+        1) c_rtt="internet" ;;
+        3) c_rtt="satellite" ;;
+        *) c_rtt="oceanic" ;;
+    esac
+    
+    echo "  [5] 流量分类识别 (Diffserv): "
+    echo "    1) diffserv4  (按数据包特征分类，CPU 消耗较高)"
+    echo "    2) besteffort (盲推忽略特征，大幅降低 CPU 开销)"
+    local diff_sel=""; read -rp "  请选择 (默认 2): " diff_sel || true
+    local c_diff=""
+    case "${diff_sel:-2}" in
+        1) c_diff="diffserv4" ;;
+        *) c_diff="besteffort" ;;
+    esac
+
+    local final_opts=""
+    if test -n "$c_bw" && test "$c_bw" != "0"; then final_opts="$final_opts bandwidth $c_bw"; fi
+    if test -n "$c_oh" && test "$c_oh" != "0"; then final_opts="$final_opts overhead $c_oh"; fi
+    if test -n "$c_mpu" && test "$c_mpu" != "0"; then final_opts="$final_opts mpu $c_mpu"; fi
+    final_opts="$final_opts $c_rtt $c_diff"
+    final_opts="${final_opts#"${final_opts%%[! ]*}"}"
+    
+    if test -z "$final_opts"; then
+        rm -f "$CAKE_OPTS_FILE" 2>/dev/null || true
+        info "已清除所有 CAKE 自定义高阶参数，恢复默认。"
+    else
+        echo "$final_opts" > "$CAKE_OPTS_FILE"
+        info "CAKE 高阶参数已写入物理储存: $final_opts"
+    fi
+    
+    modprobe sch_cake >/dev/null 2>&1 || true
+    _apply_cake_live
+    
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if test -n "$IFACE"; then
+        if tc qdisc show dev "$IFACE" 2>/dev/null | grep -q "cake"; then
+            info "验证通过：CAKE 高阶队列已成功接管网卡接口！"
+        else
+            warn "验证失败：网卡当前未运行 CAKE 调度器。请确认系统内核支持 sch_cake 模块。"
+        fi
+    fi
+    local _p=""; read -rp "参数阵列配置完成，请按 Enter 返回主菜单..." _p || true
+}
+# ------------------------------------------------------------------------------
+# [ 0x09: 系统内核网络栈调优 (全量 60+ 项底层协议栈重塑) ]
+# ------------------------------------------------------------------------------
+
+do_perf_tuning() {
+    title "系统底层网络栈结构重塑"
+    warn "注意: 此操作将写入极限并发参数，执行完毕后系统将自动重启以应用配置！"
+    
+    local confirm=""
+    read -rp "确认要执行网络栈优化吗？(y/n): " confirm || true
+    if [[ ! "$confirm" =~ ^[yY]$ ]]; then return; fi
+    
+    local current_scale=$(sysctl -n net.ipv4.tcp_adv_win_scale 2>/dev/null || echo "1")
+    local current_app=$(sysctl -n net.ipv4.tcp_app_win 2>/dev/null || echo "31")
+    
+    echo -e "  当前 tcp_adv_win_scale: ${cyan}${current_scale}${none} (建议 1 或 2)"
+    echo -e "  当前 tcp_app_win: ${cyan}${current_app}${none} (建议 31)"
+    
+    local new_scale=""
+    read -rp "设置 tcp_adv_win_scale (-2 到 2，直接回车保留当前): " new_scale || true
+    if test -z "$new_scale"; then new_scale="$current_scale"; fi
+    
+    local new_app=""
+    read -rp "设置 tcp_app_win (1 到 31，直接回车保留当前): " new_app || true
+    if test -z "$new_app"; then new_app="$current_app"; fi
+
+    info "清理历史及冗余的网络优化配置..."
+    systemctl stop net-speeder >/dev/null 2>&1 || true
+    killall net-speeder >/dev/null 2>&1 || true
+    systemctl disable net-speeder >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/net-speeder.service /etc/systemd/system/multi-user.target.wants/net-speeder.service 2>/dev/null || true
+    systemctl daemon-reload >/dev/null 2>&1 || true
+
+    truncate -s 0 /etc/sysctl.conf 2>/dev/null || true
+    truncate -s 0 /etc/sysctl.d/99-sysctl.conf 2>/dev/null || true
+    truncate -s 0 /etc/sysctl.d/99-network-optimized.conf 2>/dev/null || true
+    rm -f /etc/sysctl.d/99-bbr*.conf /etc/sysctl.d/99-ipv6-disable.conf /etc/sysctl.d/99-pro*.conf /etc/sysctl.d/99-xanmod-bbr3.conf /usr/lib/sysctl.d/50-pid-max.conf /usr/lib/sysctl.d/99-protect-links.conf 2>/dev/null || true
+
+    info "配置系统高并发进程限制 (Limits)..."
+    cat > /etc/security/limits.conf << 'EOF'
+root soft nofile 1000000
+root hard nofile 1000000
+root soft nproc 1000000
+root hard nproc 1000000
+root soft core 1000000
+root hard core 1000000
+root soft stack 1000000
+root hard stack 1000000
+
+* soft nofile 1000000
+* hard nofile 1000000
+* soft nproc 1000000
+* hard nproc 1000000
+* soft core 1000000
+* hard core 1000000
+* soft stack 1000000
+* hard stack 1000000
+EOF
+
+    if ! grep -q "pam_limits.so" /etc/pam.d/common-session 2>/dev/null; then
+        echo "session required pam_limits.so" >> /etc/pam.d/common-session
+    fi
+    if ! grep -q "pam_limits.so" /etc/pam.d/common-session-noninteractive 2>/dev/null; then
+        echo "session required pam_limits.so" >> /etc/pam.d/common-session-noninteractive
+    fi
+    
+    sed -i '/DefaultLimitNOFILE/d' /etc/systemd/system.conf 2>/dev/null || true
+    sed -i '/DefaultLimitNPROC/d' /etc/systemd/system.conf 2>/dev/null || true
+    echo "DefaultLimitNOFILE=1000000" >> /etc/systemd/system.conf
+    echo "DefaultLimitNPROC=1000000" >> /etc/systemd/system.conf
+
+    local target_qdisc="fq"
+    local cake_state="false"
+    if sysctl net.core.default_qdisc 2>/dev/null | grep -q 'cake'; then cake_state="true"; fi
+    if test "$cake_state" = "true"; then target_qdisc="cake"; fi
+
+    info "写入内核 Sysctl 协议栈参数..."
+    cat > /etc/sysctl.d/99-network-optimized.conf << EOF
+net.core.default_qdisc = ${target_qdisc}
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.neigh.default.base_reachable_time_ms = 60000
+net.ipv4.neigh.default.mcast_solicit = 2
+net.ipv4.neigh.default.retrans_time_ms = 500
+net.ipv4.conf.all.rp_filter = 0
+net.ipv4.conf.default.rp_filter = 0
+net.ipv4.tcp_no_metrics_save = 1
+net.ipv4.tcp_ecn = 1
+net.ipv4.tcp_ecn_fallback = 1
+net.ipv4.tcp_mtu_probing = 1
+net.ipv4.tcp_rfc1337 = 1
+net.ipv4.tcp_sack = 1
+net.ipv4.tcp_window_scaling = 1
+net.ipv4.tcp_adv_win_scale = ${new_scale}
+net.ipv4.tcp_app_win = ${new_app}
+net.ipv4.tcp_moderate_rcvbuf = 1
+
+net.core.rmem_default = 560576
+net.core.wmem_default = 560576
+net.core.rmem_max = 21699928
+net.core.wmem_max = 21699928
+net.ipv4.tcp_rmem = 4096 760576 21699928
+net.ipv4.tcp_wmem = 4096 760576 21699928
+net.ipv4.udp_rmem_min = 4096
+net.ipv4.udp_wmem_min = 4096
+
+net.core.dev_weight = 64
+net.core.dev_weight_tx_bias = 1
+net.core.dev_weight_rx_bias = 1
+net.core.netdev_budget = 300
+
+net.ipv4.igmp_max_memberships = 200
+net.ipv4.route.flush = 1
+net.ipv4.tcp_slow_start_after_idle = 0
+
+vm.swappiness = 1
+fs.file-max = 1048576
+fs.nr_open = 1048576
+fs.inotify.max_user_instances = 262144
+
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_fin_timeout = 12
+net.ipv4.tcp_keepalive_probes = 5
+net.ipv4.tcp_keepalive_time = 60
+net.ipv4.tcp_keepalive_intvl = 30
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_abort_on_overflow = 0
+net.ipv4.ip_local_port_range = 1024 65535
+net.ipv4.tcp_max_syn_backlog = 65535
+net.ipv4.tcp_max_tw_buckets = 262144
+net.ipv4.tcp_retries1 = 5
+net.ipv4.tcp_retries2 = 8
+net.ipv4.tcp_syn_retries = 3
+net.ipv4.tcp_synack_retries = 2
+
+net.core.somaxconn = 65535
+net.core.netdev_max_backlog = 65535
+net.ipv4.tcp_timestamps = 1
+net.ipv4.tcp_max_orphans = 262144
+net.core.optmem_max = 3276800
+net.ipv4.tcp_fastopen = 3
+net.ipv4.tcp_reordering = 3
+net.ipv4.tcp_autocorking = 0
+net.ipv4.tcp_tso_win_divisor = 6
+
+kernel.pid_max = 4194304
+kernel.threads-max = 85536
+net.ipv4.neigh.default.gc_thresh1 = 1024
+net.ipv4.neigh.default.gc_thresh2 = 4096
+net.ipv4.neigh.default.gc_thresh3 = 8192
+net.ipv4.neigh.default.gc_stale_time = 100
+net.ipv4.conf.default.arp_announce = 2
+net.ipv4.conf.lo.arp_announce = 2
+net.ipv4.conf.all.arp_announce = 2
+net.unix.max_dgram_qlen = 130000
+
+net.core.busy_poll = 50
+net.core.busy_read = 0
+net.ipv4.tcp_notsent_lowat = 16384
+
+vm.vfs_cache_pressure = 10
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.ip_forward = 1
+net.ipv4.conf.all.arp_ignore = 1
+net.ipv4.tcp_early_retrans = 3
+net.ipv4.neigh.default.unres_qlen = 35535
+net.ipv4.conf.all.route_localnet = 0
+net.ipv4.tcp_orphan_retries = 8
+net.ipv4.conf.all.forwarding = 1
+
+net.ipv4.ipfrag_max_dist = 32
+net.ipv4.ipfrag_secret_interval = 200
+net.ipv4.ipfrag_low_thresh = 42008868
+net.ipv4.ipfrag_high_thresh = 104917729
+net.ipv4.ipfrag_time = 30
+
+fs.aio-max-nr = 262144
+kernel.msgmax = 655350
+kernel.msgmnb = 655350
+net.ipv4.neigh.default.proxy_qlen = 50000
+net.ipv4.tcp_pacing_ca_ratio = 150
+net.ipv4.tcp_pacing_ss_ratio = 210
+fs.protected_fifos = 1
+fs.protected_hardlinks = 1
+fs.protected_regular = 2
+fs.protected_symlinks = 1
+
+net.core.rps_sock_flow_entries = 131072
+net.core.flow_limit_table_len = 131072
+net.ipv4.tcp_workaround_signed_windows = 1
+vm.dirty_ratio = 35
+vm.overcommit_memory = 0
+kernel.sysrq = 1
+
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+
+vm.max_map_count = 65535
+net.ipv4.tcp_child_ehash_entries = 65535
+net.ipv4.ip_no_pmtu_disc = 0
+net.ipv4.tcp_stdurg = 0
+net.ipv4.tcp_challenge_ack_limit = 1200
+net.ipv4.tcp_comp_sack_delay_ns = 50000
+net.ipv4.tcp_comp_sack_nr = 1
+net.ipv4.tcp_fwmark_accept = 1
+net.ipv4.tcp_invalid_ratelimit = 800
+net.ipv4.tcp_l3mdev_accept = 1
+
+net.core.tstamp_allow_data = 1
+net.core.netdev_tstamp_prequeue = 1
+kernel.randomize_va_space = 2
+
+net.ipv4.tcp_mem = 65536 131072 262144
+net.ipv4.udp_mem = 65536 131072 262144
+net.ipv4.tcp_recovery = 0x1
+net.ipv4.tcp_dsack = 1
+
+kernel.shmmax = 67108864
+kernel.shmall = 16777216
+
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+net.ipv4.icmp_ignore_bogus_error_responses = 1
+net.ipv4.tcp_limit_output_bytes = 1310720
+net.ipv4.tcp_min_tso_segs = 1
+net.ipv4.tcp_thin_linear_timeouts = 0
+net.ipv4.tcp_early_demux = 1
+net.ipv4.tcp_shrink_window = 0
+net.ipv4.neigh.default.unres_qlen_bytes = 65535
+kernel.printk = 3 4 1 3
+kernel.sched_autogroup_enabled = 0
+EOF
+
+    if ! sysctl -p /etc/sysctl.d/99-network-optimized.conf >/dev/null 2>&1; then
+        error "Sysctl 参数应用存在错误，部分硬件或系统环境不支持。"
+        local _p=""; read -rp "按 Enter 返回菜单..." _p || true
+        return 1
+    else
+        info "底层 Sysctl 参数已成功注入。"
+    fi
+    
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if test -n "$IFACE"; then
+        info "配置网卡驱动硬件卸载与 RPS 软中断分发 ($IFACE)..."
+        
+        cat > /usr/local/bin/nic-optimize.sh <<EOF_NIC
+#!/bin/bash
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+IFACE="$IFACE"
+ethtool -K \$IFACE gro off gso off tso off lro off rx-gro-hw off tx-udp-segmentation on 2>/dev/null || true
+ethtool -C \$IFACE adaptive-rx off rx-usecs 0 tx-usecs 0 2>/dev/null || true
+EOF_NIC
+        chmod +x /usr/local/bin/nic-optimize.sh 2>/dev/null || true
+        
+        cat > /etc/systemd/system/nic-optimize.service << 'EOSERVICE'
+[Unit]
+Description=NIC Advanced Tuning
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nic-optimize.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOSERVICE
+
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl enable nic-optimize.service >/dev/null 2>&1 || true
+        systemctl start nic-optimize.service >/dev/null 2>&1 || true
+        tc qdisc replace dev "$IFACE" root fq >/dev/null 2>&1 || true
+
+        local CPU=$(nproc 2>/dev/null || echo 1)
+        local CPU_MASK=$(printf "%x" $(( (1<<CPU)-1 )))
+        
+        cat > /usr/local/bin/rps-optimize.sh <<EOF_RPS
+#!/bin/bash
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+IFACE="$IFACE"
+CPU_MASK="$CPU_MASK"
+RX_QUEUES=\$(ls -d /sys/class/net/\$IFACE/queues/rx-* 2>/dev/null | wc -l || echo 0)
+
+for RX in /sys/class/net/\$IFACE/queues/rx-*; do
+    if test -w "\$RX/rps_cpus"; then echo "\$CPU_MASK" > "\$RX/rps_cpus" 2>/dev/null || true; fi
+done
+
+for TX in /sys/class/net/\$IFACE/queues/tx-*; do
+    if test -w "\$TX/xps_cpus"; then echo "\$CPU_MASK" > "\$TX/xps_cpus" 2>/dev/null || true; fi
+done
+
+sysctl -w net.core.rps_sock_flow_entries=131072 >/dev/null 2>&1 || true
+
+if test "\$RX_QUEUES" -gt 0 2>/dev/null; then
+    FLOW_PER_QUEUE=\$((65535 / RX_QUEUES))
+    for RX in /sys/class/net/\$IFACE/queues/rx-*; do
+        if test -w "\$RX/rps_flow_cnt"; then echo "\$FLOW_PER_QUEUE" > "\$RX/rps_flow_cnt" 2>/dev/null || true; fi
+    done
+fi
+EOF_RPS
+        chmod +x /usr/local/bin/rps-optimize.sh 2>/dev/null || true
+        
+        cat > /etc/systemd/system/rps-optimize.service << 'EOF_RPS_SRV'
+[Unit]
+Description=RPS RFS Network CPU Distribution
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/rps-optimize.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF_RPS_SRV
+
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl enable rps-optimize.service >/dev/null 2>&1 || true
+        systemctl start rps-optimize.service >/dev/null 2>&1 || true
+    fi
+
+    info "网络栈参数应用完成，系统将在 15 秒后重启..."
+    sleep 15
+    reboot
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x0A: 网卡发送队列调优与 CAKE 参数高级配置 ]
+# ------------------------------------------------------------------------------
+
+do_txqueuelen_opt() {
+    title "网卡发送队列 (TX Queue) 调优"
+    local IP_CMD=$(command -v ip || echo "")
+    if test -z "$IP_CMD"; then
+        error "系统缺失 iproute2 (ip 命令) 核心组件，无法调节网卡。"
+        local _p=""; read -rp "按 Enter 返回..." _p || true
+        return 1
+    fi
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if test -z "$IFACE"; then
+        error "无法定位系统默认出口网卡，操作中止。"
+        local _p=""; read -rp "按 Enter 返回..." _p || true
+        return 1
+    fi
+    info "正在修改 $IFACE 发送队列长度至 2000..."
+    $IP_CMD link set "$IFACE" txqueuelen 2000 2>/dev/null || true
+    
+    cat > /etc/systemd/system/txqueue.service << EOF
+[Unit]
+Description=Set TX Queue Length for Low Latency
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=$IP_CMD link set $IFACE txqueuelen 2000
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl enable txqueue >/dev/null 2>&1 || true
+    systemctl start txqueue >/dev/null 2>&1 || true
+    
+    local CHECK_QLEN=$($IP_CMD link show "$IFACE" 2>/dev/null | grep -o 'qlen [0-9]*' | awk '{print $2}' || echo "")
+    if test "$CHECK_QLEN" = "2000"; then 
+        info "已成功将网卡底层并发队列长度扩容至 2000 级。"
+    else 
+        warn "修改失败！当前虚拟机或网卡驱动不支持调节 txqueuelen 队列长度。"
+    fi
+    local _p=""; read -rp "按 Enter 键返回主菜单..." _p || true
+}
+
+config_cake_advanced() {
+    clear
+    title "CAKE 拥塞调度器高级微操配置"
+    local current_opts="未配置 (系统自适应默认)"
+    if test -f "$CAKE_OPTS_FILE"; then current_opts=$(cat "$CAKE_OPTS_FILE" 2>/dev/null || echo ""); fi
+    echo -e "  当前运行参数: ${cyan}${current_opts}${none}\n"
+    
+    local c_bw=""; read -rp "  [1] 声明物理带宽限制 (例如 900Mbit，填 0 取消限制): " c_bw || true
+    local c_oh=""; read -rp "  [2] 配置底层报文开销补偿 Overhead (填 0 取消限制): " c_oh || true
+    local c_mpu=""; read -rp "  [3] 最小数据单元截断 MPU (填 0 取消限制): " c_mpu || true
+    
+    echo "  [4] RTT 延迟模型: "
+    echo "    1) internet  (标准互联 85ms)"
+    echo "    2) oceanic   (跨洋海缆 300ms)"
+    echo "    3) satellite (卫星链路 1000ms)"
+    local rtt_sel=""; read -rp "  请选择 (默认 2): " rtt_sel || true
+    local c_rtt=""
+    case "${rtt_sel:-2}" in
+        1) c_rtt="internet" ;;
+        3) c_rtt="satellite" ;;
+        *) c_rtt="oceanic" ;;
+    esac
+    
+    echo "  [5] 流量分类识别 (Diffserv): "
+    echo "    1) diffserv4  (按数据包特征分类，CPU 消耗较高)"
+    echo "    2) besteffort (盲推忽略特征，大幅降低 CPU 开销)"
+    local diff_sel=""; read -rp "  请选择 (默认 2): " diff_sel || true
+    local c_diff=""
+    case "${diff_sel:-2}" in
+        1) c_diff="diffserv4" ;;
+        *) c_diff="besteffort" ;;
+    esac
+
+    local final_opts=""
+    if test -n "$c_bw" && test "$c_bw" != "0"; then final_opts="$final_opts bandwidth $c_bw"; fi
+    if test -n "$c_oh" && test "$c_oh" != "0"; then final_opts="$final_opts overhead $c_oh"; fi
+    if test -n "$c_mpu" && test "$c_mpu" != "0"; then final_opts="$final_opts mpu $c_mpu"; fi
+    final_opts="$final_opts $c_rtt $c_diff"
+    final_opts="${final_opts#"${final_opts%%[! ]*}"}"
+    
+    if test -z "$final_opts"; then
+        rm -f "$CAKE_OPTS_FILE" 2>/dev/null || true
+        info "已清除所有 CAKE 自定义高阶参数，恢复默认。"
+    else
+        echo "$final_opts" > "$CAKE_OPTS_FILE"
+        info "CAKE 高阶参数已写入物理储存: $final_opts"
+    fi
+    
+    modprobe sch_cake >/dev/null 2>&1 || true
+    _apply_cake_live
+    
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if test -n "$IFACE"; then
+        if tc qdisc show dev "$IFACE" 2>/dev/null | grep -q "cake"; then
+            info "验证通过：CAKE 高阶队列已成功接管网卡接口！"
+        else
+            warn "验证失败：网卡当前未运行 CAKE 调度器。请确认系统内核支持 sch_cake 模块。"
+        fi
+    fi
+    local _p=""; read -rp "参数阵列配置完成，请按 Enter 返回主菜单..." _p || true
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x0B: 核心组件级与系统级状态探针 (20+ 项深度侦测) ]
+# ------------------------------------------------------------------------------
+
+check_mph_state() {
+    local state=$(jq -r '.routing.domainMatcher // "false"' "$CONFIG" 2>/dev/null)
+    if [ "$state" = "mph" ]; then echo "true"; else echo "false"; fi
+}
+
+check_maxtime_state() {
+    local state=$(jq -r '.inbounds[]? | select(.protocol=="vless" and .streamSettings?.security=="reality") | .streamSettings.realitySettings.maxTimeDiff // "false"' "$CONFIG" 2>/dev/null | head -n 1)
+    if [ "$state" = "60000" ]; then echo "true"; else echo "false"; fi
+}
+
+check_routeonly_state() {
+    local state=$(jq -r '.inbounds[]? | select(.protocol=="vless" or .protocol=="shadowsocks") | .sniffing.routeOnly // "false"' "$CONFIG" 2>/dev/null | head -n 1)
+    if [ "$state" = "true" ]; then echo "true"; else echo "false"; fi
+}
+
+check_sniff_state() {
+    local state=$(jq -r '.inbounds[]? | select(.protocol=="vless" or .protocol=="shadowsocks") | .sniffing.metadataOnly // "false"' "$CONFIG" 2>/dev/null | head -n 1)
+    if [ "$state" = "true" ]; then echo "true"; else echo "false"; fi
+}
+
+check_affinity_state() {
+    local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+    if [ -f "$limit_file" ] && grep -q "^CPUAffinity=" "$limit_file" 2>/dev/null; then echo "true"; else echo "false"; fi
+}
+
+check_buffer_state() {
+    local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+    if [ -f "$limit_file" ] && grep -q "^Environment=\"XRAY_RAY_BUFFER_SIZE=64\"" "$limit_file" 2>/dev/null; then echo "true"; else echo "false"; fi
+}
+
+check_dnsmasq_state() {
+    if systemctl is-active dnsmasq >/dev/null 2>&1 && grep -q "127.0.0.1" /etc/resolv.conf 2>/dev/null; then echo "true"; else echo "false"; fi
+}
+
+check_thp_state() {
+    if [ ! -f "/sys/kernel/mm/transparent_hugepage/enabled" ] || [ ! -w "/sys/kernel/mm/transparent_hugepage/enabled" ]; then echo "unsupported"; return; fi
+    if grep -q '\[never\]' /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null; then echo "true"; else echo "false"; fi
+}
+
+check_mtu_state() {
+    if [ ! -f "/proc/sys/net/ipv4/tcp_mtu_probing" ] || [ ! -w "/proc/sys/net/ipv4/tcp_mtu_probing" ]; then echo "unsupported"; return; fi
+    if [ "$(sysctl -n net.ipv4.tcp_mtu_probing 2>/dev/null)" = "1" ]; then echo "true"; else echo "false"; fi
+}
+
+check_cpu_state() {
+    if [ ! -d "/sys/devices/system/cpu/cpu0/cpufreq" ] || [ ! -w "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor" ]; then echo "unsupported"; return; fi
+    if grep -q 'performance' /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null; then echo "true"; else echo "false"; fi
+}
+
+check_ring_state() {
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if [ -z "$IFACE" ] || ! command -v ethtool >/dev/null 2>&1 || ! ethtool -g "$IFACE" >/dev/null 2>&1; then echo "unsupported"; return; fi
+    local curr_rx=$(ethtool -g "$IFACE" 2>/dev/null | grep -A4 "Current hardware settings" | grep "RX:" | head -1 | awk '{print $2}')
+    if [ -z "$curr_rx" ]; then echo "unsupported"; return; fi
+    if [ "$curr_rx" = "512" ]; then echo "true"; else echo "false"; fi
+}
+
+check_zram_state() {
+    if ! modprobe -n zram >/dev/null 2>&1 && ! lsmod 2>/dev/null | grep -q zram; then echo "unsupported"; return; fi
+    if swapon --show 2>/dev/null | grep -q 'zram'; then echo "true"; else echo "false"; fi
+}
+
+check_journal_state() {
+    if [ ! -f "/etc/systemd/journald.conf" ]; then echo "unsupported"; return; fi
+    if grep -q '^Storage=volatile' /etc/systemd/journald.conf 2>/dev/null; then echo "true"; else echo "false"; fi
+}
+
+check_process_priority_state() {
+    local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+    if [ ! -f "$limit_file" ]; then echo "false"; return; fi
+    if grep -q "^OOMScoreAdjust=-500" "$limit_file" 2>/dev/null; then echo "true"; else echo "false"; fi
+}
+
+check_cake_state() {
+    if sysctl net.core.default_qdisc 2>/dev/null | grep -q 'cake'; then echo "true"; else echo "false"; fi
+}
+
+check_ackfilter_state() {
+    if test -f "$FLAGS_DIR/ack_filter"; then echo "true"; else echo "false"; fi
+}
+
+check_ecn_state() {
+    if test -f "$FLAGS_DIR/ecn"; then echo "true"; else echo "false"; fi
+}
+
+check_wash_state() {
+    if test -f "$FLAGS_DIR/wash"; then echo "true"; else echo "false"; fi
+}
+
+check_gso_off_state() {
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if test -z "$IFACE"; then echo "unsupported"; return; fi
+    if ! command -v ethtool >/dev/null 2>&1; then echo "unsupported"; return; fi
+    local eth_info=$(ethtool -k "$IFACE" 2>/dev/null || echo "")
+    if test -z "$eth_info"; then echo "unsupported"; return; fi
+    if echo "$eth_info" | grep -E "^generic-receive-offload:|^rx-gro:" | grep -q "fixed" 2>/dev/null; then echo "unsupported"; return; fi
+    if echo "$eth_info" | grep -E "^generic-receive-offload:|^rx-gro:" | grep -q " off" 2>/dev/null; then echo "true"; else echo "false"; fi
+}
+
+check_irq_state() {
+    local CORES=$(nproc 2>/dev/null || echo 1)
+    if test "$CORES" -lt 2 2>/dev/null; then echo "unsupported"; return; fi
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if test -z "$IFACE"; then echo "false"; return; fi
+    local irq=$(grep "$IFACE" /proc/interrupts 2>/dev/null | head -n 1 | awk '{print $1}' | tr -d ':' || echo "")
+    if test -n "$irq"; then
+        local mask=$(cat "/proc/irq/$irq/smp_affinity" 2>/dev/null | tr -d '0' || echo "")
+        if test "$mask" = "1"; then echo "true"; else echo "false"; fi
+    else
+        echo "false"
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x0C: 系统底层硬件微操核心与自动化脚本装载 ]
+# ------------------------------------------------------------------------------
+
+update_hw_boot_script() {
+    cat << 'EOF' > /usr/local/bin/xray-hw-tweaks.sh
+#!/bin/bash
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+if test -z "$IFACE"; then sleep 3; IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo ""); fi
+EOF
+
+    if [ "$(check_thp_state)" = "true" ]; then
+        cat >> /usr/local/bin/xray-hw-tweaks.sh << 'EOF'
+if test -w /sys/kernel/mm/transparent_hugepage/enabled; then
+    echo never > /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || true
+    echo never > /sys/kernel/mm/transparent_hugepage/defrag 2>/dev/null || true
+fi
+EOF
+    fi
+
+    if [ "$(check_cpu_state)" = "true" ]; then
+        cat >> /usr/local/bin/xray-hw-tweaks.sh << 'EOF'
+for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+    if test -f "$cpu"; then echo performance > "$cpu" 2>/dev/null || true; fi
+done
+EOF
+    fi
+
+    if [ "$(check_ring_state)" = "true" ]; then
+        echo "ethtool -G \$IFACE rx 512 tx 512 2>/dev/null || true" >> /usr/local/bin/xray-hw-tweaks.sh
+    fi
+    
+    if [ "$(check_gso_off_state)" = "true" ]; then
+        echo "ethtool -K \$IFACE gro off gso off tso off 2>/dev/null || true" >> /usr/local/bin/xray-hw-tweaks.sh
+    elif [ "$(check_gso_off_state)" = "false" ]; then
+        echo "ethtool -K \$IFACE gro on gso on tso on 2>/dev/null || true" >> /usr/local/bin/xray-hw-tweaks.sh
+    fi
+    
+    cat >> /usr/local/bin/xray-hw-tweaks.sh << 'EOF'
+CAKE_OPTS=""
+if test -f "/usr/local/etc/xray/cake_opts.txt"; then CAKE_OPTS=$(cat "/usr/local/etc/xray/cake_opts.txt" 2>/dev/null || true); fi
+ACK_FLAG=""
+if test -f "/usr/local/etc/xray/flags/ack_filter"; then ACK_FLAG="ack-filter"; fi
+ECN_FLAG=""
+if test -f "/usr/local/etc/xray/flags/ecn"; then ECN_FLAG="ecn"; fi
+WASH_FLAG=""
+if test -f "/usr/local/etc/xray/flags/wash"; then WASH_FLAG="wash"; fi
+EOF
+
+    if [ "$(check_cake_state)" = "true" ]; then
+        echo 'tc qdisc replace dev $IFACE root cake $CAKE_OPTS $ACK_FLAG $ECN_FLAG $WASH_FLAG 2>/dev/null || true' >> /usr/local/bin/xray-hw-tweaks.sh
+    fi
+
+    if [ "$(check_irq_state)" = "true" ]; then
+        cat >> /usr/local/bin/xray-hw-tweaks.sh << 'EOF'
+systemctl stop irqbalance 2>/dev/null || true
+for irq in $(grep "$IFACE" /proc/interrupts 2>/dev/null | awk '{print $1}' | tr -d ':' || true); do
+    if test -w "/proc/irq/$irq/smp_affinity"; then echo 1 > "/proc/irq/$irq/smp_affinity" 2>/dev/null || true; fi
+done
+EOF
+    fi
+
+    chmod +x /usr/local/bin/xray-hw-tweaks.sh 2>/dev/null || true
+
+    cat << 'EOF' > /etc/systemd/system/xray-hw-tweaks.service
+[Unit]
+Description=Xray Hardware Tweaks
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/xray-hw-tweaks.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl enable xray-hw-tweaks.service >/dev/null 2>&1 || true
+}
+
+_apply_cake_live() {
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if test -z "$IFACE"; then return; fi
+    
+    if test "$(check_cake_state)" = "true"; then
+        local base_opts=""
+        if test -f "$CAKE_OPTS_FILE"; then base_opts=$(cat "$CAKE_OPTS_FILE" 2>/dev/null || echo ""); fi
+        
+        local f_ack=""
+        if test "$(check_ackfilter_state)" = "true"; then f_ack="ack-filter"; fi
+        
+        local f_ecn=""
+        if test "$(check_ecn_state)" = "true"; then f_ecn="ecn"; fi
+        
+        local f_wash=""
+        if test "$(check_wash_state)" = "true"; then f_wash="wash"; fi
+        
+        tc qdisc replace dev "$IFACE" root cake $base_opts $f_ack $f_ecn $f_wash 2>/dev/null || true
+    fi
+    update_hw_boot_script
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x0D: Xray 系统级与应用层黑科技切换枢纽 (25 项支撑函数) ]
+# ------------------------------------------------------------------------------
+
+_toggle_affinity_on() {
+    local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+    if [ -f "$limit_file" ]; then
+        sed -i '/^CPUAffinity=/d' "$limit_file" 2>/dev/null || true
+        sed -i '/^Environment="GOMAXPROCS=/d' "$limit_file" 2>/dev/null || true
+        local CORES=$(nproc 2>/dev/null || echo 1)
+        local TARGET_CPU="0"
+        if [ "$CORES" -ge 2 ]; then TARGET_CPU="1"; fi
+        echo "CPUAffinity=$TARGET_CPU" >> "$limit_file"
+        echo "Environment=\"GOMAXPROCS=1\"" >> "$limit_file"
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+}
+
+_toggle_affinity_off() {
+    local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+    if [ -f "$limit_file" ]; then
+        sed -i '/^CPUAffinity=/d' "$limit_file" 2>/dev/null || true
+        sed -i '/^Environment="GOMAXPROCS=/d' "$limit_file" 2>/dev/null || true
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+}
+
+toggle_dnsmasq() {
+    if [ "$(check_dnsmasq_state)" = "true" ]; then
+        systemctl stop dnsmasq >/dev/null 2>&1 || true
+        systemctl disable dnsmasq >/dev/null 2>&1 || true
+        
+        chattr -i /etc/resolv.conf 2>/dev/null || true
+        rm -f /etc/resolv.conf 2>/dev/null || true
+        if [ -f /etc/resolv.conf.bak ]; then
+            mv /etc/resolv.conf.bak /etc/resolv.conf
+        else
+            echo "nameserver 8.8.8.8" > /etc/resolv.conf
+        fi
+        
+        systemctl enable systemd-resolved >/dev/null 2>&1 || true
+        systemctl start systemd-resolved >/dev/null 2>&1 || true
+        
+        _safe_jq_write '.dns = {"servers":["https://8.8.8.8/dns-query","https://1.1.1.1/dns-query","https://doh.opendns.com/dns-query"], "queryStrategy":"UseIP"}'
+    else
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -y >/dev/null 2>&1 || yum makecache -y >/dev/null 2>&1 || true
+        apt-get install -y dnsmasq >/dev/null 2>&1 || yum install -y dnsmasq >/dev/null 2>&1 || true
+        
+        systemctl stop systemd-resolved 2>/dev/null || true
+        systemctl disable systemd-resolved 2>/dev/null || true
+        systemctl stop resolvconf 2>/dev/null || true
+        
+        cat > /etc/dnsmasq.conf <<EOF
+port=53
+listen-address=127.0.0.1
+bind-interfaces
+cache-size=21000
+min-cache-ttl=3600
+all-servers
+server=8.8.8.8
+server=1.1.1.1
+server=208.67.222.222
+no-resolv
+no-poll
+EOF
+
+        systemctl enable dnsmasq >/dev/null 2>&1 || true
+        systemctl restart dnsmasq >/dev/null 2>&1 || true
+        
+        chattr -i /etc/resolv.conf 2>/dev/null || true
+        if [ ! -f /etc/resolv.conf.bak ]; then
+            cp /etc/resolv.conf /etc/resolv.conf.bak 2>/dev/null || true
+        fi
+        rm -f /etc/resolv.conf 2>/dev/null || true
+        echo "nameserver 127.0.0.1" > /etc/resolv.conf
+        chattr +i /etc/resolv.conf 2>/dev/null || true
+        
+        _safe_jq_write '.dns = {"servers":["127.0.0.1"], "queryStrategy":"UseIP"}'
+    fi
+}
+
+toggle_thp() {
+    if [ "$(check_thp_state)" = "true" ]; then
+        echo always > /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || true
+        echo always > /sys/kernel/mm/transparent_hugepage/defrag 2>/dev/null || true
+    else
+        echo never > /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || true
+        echo never > /sys/kernel/mm/transparent_hugepage/defrag 2>/dev/null || true
+    fi
+    update_hw_boot_script
+}
+
+toggle_mtu() {
+    local conf="/etc/sysctl.d/99-network-optimized.conf"
+    if [ "$(check_mtu_state)" = "true" ]; then
+        sed -i 's/^net.ipv4.tcp_mtu_probing.*/net.ipv4.tcp_mtu_probing = 0/' "$conf" 2>/dev/null || true
+    else
+        if grep -q "net.ipv4.tcp_mtu_probing" "$conf" 2>/dev/null; then
+            sed -i 's/^net.ipv4.tcp_mtu_probing.*/net.ipv4.tcp_mtu_probing = 1/' "$conf" 2>/dev/null || true
+        else
+            echo "net.ipv4.tcp_mtu_probing = 1" >> "$conf"
+        fi
+    fi
+    sysctl -p "$conf" >/dev/null 2>&1 || true
+}
+
+toggle_cpu() {
+    if [ "$(check_cpu_state)" = "unsupported" ]; then return; fi
+    if [ "$(check_cpu_state)" = "true" ]; then
+        for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do 
+            if [ -f "$cpu" ]; then echo schedutil > "$cpu" 2>/dev/null || echo ondemand > "$cpu" 2>/dev/null || true; fi
+        done
+    else
+        for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do 
+            if [ -f "$cpu" ]; then echo performance > "$cpu" 2>/dev/null || true; fi
+        done
+    fi
+    update_hw_boot_script
+}
+
+toggle_ring() {
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if [ "$(check_ring_state)" = "unsupported" ] || [ -z "$IFACE" ]; then return; fi
+    if [ "$(check_ring_state)" = "true" ]; then
+        local max_rx=$(ethtool -g "$IFACE" 2>/dev/null | grep -A4 "Pre-set maximums" | grep "RX:" | head -1 | awk '{print $2}')
+        if [ -n "$max_rx" ]; then ethtool -G "$IFACE" rx "$max_rx" tx "$max_rx" 2>/dev/null || true; fi
+    else
+        ethtool -G "$IFACE" rx 512 tx 512 2>/dev/null || true
+    fi
+    update_hw_boot_script
+}
+
+toggle_zram() {
+    if [ "$(check_zram_state)" = "unsupported" ]; then return; fi
+    if [ "$(check_zram_state)" = "true" ]; then
+        swapoff /dev/zram0 2>/dev/null || true
+        rmmod zram 2>/dev/null || true
+        systemctl disable xray-zram.service --now 2>/dev/null || true
+        rm -f /etc/systemd/system/xray-zram.service /usr/local/bin/xray-zram.sh
+    else
+        local TOTAL_MEM=$(free -m 2>/dev/null | awk '/Mem/{print $2}' || echo "1024")
+        local ZRAM_SIZE
+        if [ "$TOTAL_MEM" -lt 500 ]; then ZRAM_SIZE=$((TOTAL_MEM * 2))
+        elif [ "$TOTAL_MEM" -lt 1024 ]; then ZRAM_SIZE=$((TOTAL_MEM * 3 / 2))
+        else ZRAM_SIZE=$TOTAL_MEM; fi
+        
+        cat > /usr/local/bin/xray-zram.sh <<EOFZ
+#!/bin/bash
+modprobe zram num_devices=1
+echo "lz4" > /sys/block/zram0/comp_algorithm 2>/dev/null || true
+echo "${ZRAM_SIZE}M" > /sys/block/zram0/disksize
+mkswap /dev/zram0
+swapon -p 100 /dev/zram0
+EOFZ
+        chmod +x /usr/local/bin/xray-zram.sh 2>/dev/null || true
+        
+        cat > /etc/systemd/system/xray-zram.service <<EOFZ
+[Unit]
+Description=Xray ZRAM Setup
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/xray-zram.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOFZ
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl enable xray-zram.service >/dev/null 2>&1 || true
+        systemctl start xray-zram.service >/dev/null 2>&1 || true
+    fi
+}
+
+toggle_journal() {
+    local conf="/etc/systemd/journald.conf"
+    if [ "$(check_journal_state)" = "unsupported" ]; then return; fi
+    if [ "$(check_journal_state)" = "true" ]; then
+        sed -i 's/^Storage=volatile/#Storage=auto/' "$conf" 2>/dev/null || true
+        systemctl restart systemd-journald >/dev/null 2>&1 || true
+    else
+        if grep -q "^#Storage=" "$conf" 2>/dev/null; then sed -i 's/^#Storage=.*/Storage=volatile/' "$conf" 2>/dev/null || true
+        elif grep -q "^Storage=" "$conf" 2>/dev/null; then sed -i 's/^Storage=.*/Storage=volatile/' "$conf" 2>/dev/null || true
+        else echo "Storage=volatile" >> "$conf"; fi
+        systemctl restart systemd-journald >/dev/null 2>&1 || true
+    fi
+}
+
+toggle_process_priority() {
+    local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+    if [ ! -f "$limit_file" ]; then return; fi
+    if grep -q "^OOMScoreAdjust=-500" "$limit_file" 2>/dev/null; then
+        sed -i '/^OOMScoreAdjust=/d' "$limit_file" 2>/dev/null || true
+        sed -i '/^IOSchedulingClass=/d' "$limit_file" 2>/dev/null || true
+        sed -i '/^IOSchedulingPriority=/d' "$limit_file" 2>/dev/null || true
+    else
+        echo "OOMScoreAdjust=-500" >> "$limit_file"
+        echo "IOSchedulingClass=realtime" >> "$limit_file"
+        echo "IOSchedulingPriority=2" >> "$limit_file"
+    fi
+    systemctl daemon-reload >/dev/null 2>&1 || true
+}
+
+toggle_buffer() {
+    local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+    if [ ! -f "$limit_file" ]; then return; fi
+    if grep -q "XRAY_RAY_BUFFER_SIZE=64" "$limit_file" 2>/dev/null; then
+        sed -i '/XRAY_RAY_BUFFER_SIZE=/d' "$limit_file" 2>/dev/null || true
+    else
+        echo "Environment=\"XRAY_RAY_BUFFER_SIZE=64\"" >> "$limit_file"
+    fi
+    systemctl daemon-reload >/dev/null 2>&1 || true
+}
+
+toggle_routeonly() {
+    if [ "$(check_routeonly_state)" = "true" ]; then
+        _safe_jq_write '(.inbounds[]? | select(.protocol=="vless" or .protocol=="shadowsocks") | .sniffing.routeOnly) = false'
+    else
+        _safe_jq_write '(.inbounds[]? | select(.protocol=="vless" or .protocol=="shadowsocks") | .sniffing.routeOnly) = true'
+    fi
+}
+
+toggle_cake_qdisc() {
+    local conf="/etc/sysctl.d/99-network-optimized.conf"
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if [ -z "$IFACE" ]; then return; fi
+    
+    if [ "$(check_cake_state)" = "true" ]; then
+        sed -i 's/^net.core.default_qdisc.*/net.core.default_qdisc = fq/' "$conf" 2>/dev/null || true
+        sysctl -p "$conf" >/dev/null 2>&1 || true
+        tc qdisc replace dev "$IFACE" root fq >/dev/null 2>&1 || true
+    else
+        sed -i 's/^net.core.default_qdisc.*/net.core.default_qdisc = cake/' "$conf" 2>/dev/null || true
+        sysctl -p "$conf" >/dev/null 2>&1 || true
+        _apply_cake_live
+    fi
+}
+
+toggle_cake_flag() {
+    local flag="$1"
+    if [ ! -d "$FLAGS_DIR" ]; then mkdir -p "$FLAGS_DIR"; fi
+    if [ -f "$FLAGS_DIR/$flag" ]; then 
+        rm -f "$FLAGS_DIR/$flag" 2>/dev/null || true
+    else 
+        touch "$FLAGS_DIR/$flag" 2>/dev/null || true
+    fi
+    _apply_cake_live
+}
+
+toggle_gso() {
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if [ -z "$IFACE" ]; then return; fi
+    if [ "$(check_gso_off_state)" = "true" ]; then
+        ethtool -K "$IFACE" gro on gso on tso on 2>/dev/null || true
+    else
+        ethtool -K "$IFACE" gro off gso off tso off 2>/dev/null || true
+    fi
+    update_hw_boot_script
+}
+
+toggle_irq() {
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if [ -z "$IFACE" ]; then return; fi
+    if [ "$(check_irq_state)" = "true" ]; then
+        systemctl start irqbalance 2>/dev/null || true
+        systemctl enable irqbalance 2>/dev/null || true
+        local CPU=$(nproc 2>/dev/null || echo 1)
+        local MASK=$(printf "%x" $(( (1<<CPU)-1 )))
+        for irq in $(grep "$IFACE" /proc/interrupts 2>/dev/null | awk '{print $1}' | tr -d ':' || true); do
+            echo "$MASK" > "/proc/irq/$irq/smp_affinity" 2>/dev/null || true
+        done
+    else
+        systemctl stop irqbalance 2>/dev/null || true
+        systemctl disable irqbalance 2>/dev/null || true
+        for irq in $(grep "$IFACE" /proc/interrupts 2>/dev/null | awk '{print $1}' | tr -d ':' || true); do
+            echo 1 > "/proc/irq/$irq/smp_affinity" 2>/dev/null || true
+        done
+    fi
+    update_hw_boot_script
+}
+
+_turn_on_app() {
+    _safe_jq_write '
+      (.routing) |= (. // {}) |
+      (.routing.domainMatcher) = "mph" |
+      (.outbounds[]? | select(.protocol=="freedom") | .streamSettings) |= (. // {}) |
+      (.outbounds[]? | select(.protocol=="freedom") | .streamSettings.sockopt) |= (. // {}) |
+      (.inbounds[]? | select(.protocol=="vless") | .streamSettings) |= (. // {}) |
+      (.inbounds[]? | select(.protocol=="vless") | .streamSettings.sockopt) |= (. // {}) |
+      (.outbounds[]? | select(.protocol=="freedom") | .streamSettings.sockopt.tcpNoDelay) = true |
+      (.outbounds[]? | select(.protocol=="freedom") | .streamSettings.sockopt.tcpFastOpen) = true |
+      (.inbounds[]? | select(.protocol=="vless") | .streamSettings.sockopt.tcpNoDelay) = true |
+      (.inbounds[]? | select(.protocol=="vless") | .streamSettings.sockopt.tcpFastOpen) = true |
+      (.outbounds[]? | select(.protocol=="freedom") | .streamSettings.sockopt.tcpKeepAliveIdle) = 30 |
+      (.outbounds[]? | select(.protocol=="freedom") | .streamSettings.sockopt.tcpKeepAliveInterval) = 15 |
+      (.inbounds[]? | select(.protocol=="vless") | .streamSettings.sockopt.tcpKeepAliveIdle) = 30 |
+      (.inbounds[]? | select(.protocol=="vless") | .streamSettings.sockopt.tcpKeepAliveInterval) = 15
+    '
+    _safe_jq_write '(.inbounds[]? | select(.protocol=="vless") | .sniffing.metadataOnly) = true | (.inbounds[]? | select(.protocol=="vless" or .protocol=="shadowsocks") | .sniffing.routeOnly) = true'
+    
+    local has_reality=$(jq -r '.inbounds[]? | select(.protocol=="vless" and .streamSettings?.security=="reality") | .protocol' "$CONFIG" 2>/dev/null | head -n 1)
+    if [ -n "$has_reality" ] && [ "$has_reality" != "null" ]; then
+        _safe_jq_write '(.inbounds[]? | select(.protocol=="vless" and .streamSettings?.security=="reality") | .streamSettings.realitySettings.maxTimeDiff) = 60000'
+    fi
+    
+    if [ "$(check_dnsmasq_state)" = "true" ]; then
+        _safe_jq_write '.dns = {"servers":["127.0.0.1"], "queryStrategy":"UseIP"}'
+    else
+        _safe_jq_write '.dns = {"servers":["https://8.8.8.8/dns-query","https://1.1.1.1/dns-query","https://doh.opendns.com/dns-query"], "queryStrategy":"UseIP"}'
+    fi
+    
+    _safe_jq_write '.policy = {"levels":{"0":{"handshake":3,"connIdle":60}},"system":{"statsInboundDownlink":false,"statsInboundUplink":false}}'
+    
+    local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+    if [ -f "$limit_file" ]; then
+        [ "$(check_buffer_state)" = "false" ] && echo "Environment=\"XRAY_RAY_BUFFER_SIZE=64\"" >> "$limit_file"
+        _toggle_affinity_on
+        
+        local TOTAL_MEM=$(free -m 2>/dev/null | awk '/Mem/{print $2}' || echo "1024")
+        local DYNAMIC_GOGC=100
+        if [ "$TOTAL_MEM" -ge 1800 ]; then DYNAMIC_GOGC=1000
+        elif [ "$TOTAL_MEM" -ge 900 ]; then DYNAMIC_GOGC=500
+        elif [ "$TOTAL_MEM" -ge 700 ]; then DYNAMIC_GOGC=400
+        elif [ "$TOTAL_MEM" -ge 500 ]; then DYNAMIC_GOGC=300
+        elif [ "$TOTAL_MEM" -ge 400 ]; then DYNAMIC_GOGC=200
+        else DYNAMIC_GOGC=100; fi
+
+        if grep -q "Environment=\"GOGC=" "$limit_file" 2>/dev/null; then
+            sed -i "s/^Environment=\"GOGC=.*/Environment=\"GOGC=$DYNAMIC_GOGC\"/" "$limit_file" 2>/dev/null || true
+        else
+            echo "Environment=\"GOGC=$DYNAMIC_GOGC\"" >> "$limit_file"
+        fi
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+}
+
+_turn_off_app() {
+    _safe_jq_write 'del(.routing.domainMatcher) | del(.outbounds[]? | select(.protocol=="freedom") | .streamSettings?.sockopt?.tcpNoDelay, .streamSettings?.sockopt?.tcpFastOpen, .streamSettings?.sockopt?.tcpKeepAliveIdle, .streamSettings?.sockopt?.tcpKeepAliveInterval) | del(.inbounds[]? | select(.protocol=="vless") | .streamSettings?.sockopt?.tcpNoDelay, .streamSettings?.sockopt?.tcpFastOpen, .streamSettings?.sockopt?.tcpKeepAliveIdle, .streamSettings?.sockopt?.tcpKeepAliveInterval)'
+    _safe_jq_write '(.inbounds[]? | select(.protocol=="vless") | .sniffing.metadataOnly) = false | (.inbounds[]? | select(.protocol=="vless" or .protocol=="shadowsocks") | .sniffing.routeOnly) = false'
+    _safe_jq_write 'del(.inbounds[]? | select(.protocol=="vless" and .streamSettings?.security=="reality") | .streamSettings.realitySettings.maxTimeDiff)'
+    _safe_jq_write 'del(.dns)'
+    _safe_jq_write 'del(.policy)'
+    
+    local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
+    if [ -f "$limit_file" ]; then
+        sed -i '/XRAY_RAY_BUFFER_SIZE=/d' "$limit_file" 2>/dev/null || true
+        _toggle_affinity_off
+        if grep -q "Environment=\"GOGC=" "$limit_file" 2>/dev/null; then
+            sed -i "s/^Environment=\"GOGC=.*/Environment=\"GOGC=100\"/" "$limit_file" 2>/dev/null || true
+        else
+            echo "Environment=\"GOGC=100\"" >> "$limit_file"
+        fi
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+}
+# ------------------------------------------------------------------------------
+# [ 0x14: 系统建仓及全域架构更新导航 ]
+# ------------------------------------------------------------------------------
+
+do_sys_init_menu() {
+    while true; do
+        clear
+        title "环境底层组件拉齐与结构重建区"
+        echo "  1) [一键全清] 执行 Linux 强基更新、亚太时间轴校准并置入 1GB 内存交换区"
+        echo "  2) [系统防御] 强行修改源头 DNS 解析 (注入 resolvconf，免脱轨断联)"
+        echo -e "  ${cyan}3) [重构内脏] 装备官方预编译版 XANMOD 稳定内核 (主路线，高容错降级)${none}"
+        echo "  4) [极客锻造] 原生提档内核主线，强硬执行物理编译挂载 + BBR3 组件"
+        echo "  5) [网络底层] TX Queue 网卡出站队列防拥堵极限缩减 (配置为 2000 收缩)"
+        echo "  6) [内存特化] 高并发 1,000,000 文件进程限制 + 协议栈极限调优"
+        echo -e "  ${magenta}7) [上帝微操] 应用层及系统层双轨 25 项神级优化全控板 (Dnsmasq/CAKE/ZRAM)${none}"
+        echo -e "  ${cyan}8) [极度发烧] 深入 CAKE 高级模型配置 (设定 Diffserv 调度、物理带宽上限)${none}"
+        echo "  0) 折返中央主轴系统"
+        hr
+        
+        local sys_opt=""
+        read -rp "输入重构程序代号: " sys_opt || true
+        
+        case "${sys_opt:-}" in
+            1) 
+                print_magenta ">>> 执行主网对接拉取一切基础更新源..."
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update -y >/dev/null 2>&1 || true
+                apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" full-upgrade -y >/dev/null 2>&1 || true
+                apt-get autoremove -y --purge >/dev/null 2>&1 || true
+                apt-get install -y wget curl sudo socat ntpdate e2fsprogs pkg-config iproute2 ethtool >/dev/null 2>&1 || true
+                
+                print_magenta ">>> 重建亚太网络时间轴记录..."
+                if command -v timedatectl >/dev/null 2>&1; then timedatectl set-timezone Asia/Kuala_Lumpur >/dev/null 2>&1 || true; fi
+                if command -v ntpdate >/dev/null 2>&1; then ntpdate -u us.pool.ntp.org >/dev/null 2>&1 || true; fi
+                if command -v hwclock >/dev/null 2>&1; then hwclock --systohc >/dev/null 2>&1 || true; fi
+                info "底层网络环境时空已对接 Asia/Kuala_Lumpur 区块！"
+                
+                check_and_create_1gb_swap
+                
+                print_magenta ">>> 初始化暗核清理器 cc1.sh ..."
+                cat <<'EOF' > /usr/local/bin/cc1.sh
+#!/bin/bash
+export DEBIAN_FRONTEND=noninteractive
+apt-get clean >/dev/null 2>&1 || true
+apt-get autoremove -y --purge >/dev/null 2>&1 || true
+journalctl --vacuum-time=3d >/dev/null 2>&1 || true
+rm -rf /tmp/* 2>/dev/null || true
+rm -rf /var/log/*/*.log 2>/dev/null || true
+sync
+EOF
+                chmod +x /usr/local/bin/cc1.sh 2>/dev/null || true
+                
+                local temp_cron
+                temp_cron=$(mktemp)
+                crontab -l 2>/dev/null | grep -v "cc1.sh" > "$temp_cron" || true
+                echo "0 4 */10 * * /usr/local/bin/cc1.sh >/dev/null 2>&1" >> "$temp_cron"
+                crontab "$temp_cron" 2>/dev/null || true
+                rm -f "$temp_cron" 2>/dev/null || true
+                info "深度自愈清理计划激活！已将回旋肃清周期设为 10 天。"
+                local _p=""; read -rp "完成部署，按 Enter 键继续..." _p || true 
+                ;;
+            2) do_change_dns ;;
+            3) do_install_xanmod_main_official ;;
+            4) do_xanmod_compile ;;
+            5) do_txqueuelen_opt ;;
+            6) do_perf_tuning ;;
+            7) do_app_level_tuning_menu ;;
+            8) config_cake_advanced ;;
+            0) return ;;
+        esac
+    done
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x15: Xray 核心主通讯环境网络直接热更新 ]
+# ------------------------------------------------------------------------------
+
+do_update_core() {
+    title "Xray 主心骨环境内核迭代"
+    info "强联通官方源更新通道..."
+    
+    if bash -c "$(curl -L -s https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh)" @ install >/dev/null 2>&1; then
+        if test -x "$XRAY_BIN"; then
+            fix_xray_systemd_limits
+            systemctl restart xray >/dev/null 2>&1 || true
+            local cur_ver
+            cur_ver=$("$XRAY_BIN" version 2>/dev/null | head -n1 | awk '{print $2}' || echo "检索故障")
+            info "全流程覆盖结束，当前主线跃迁到: ${cyan}$cur_ver${none}"
+            local _p=""; read -rp "按 Enter 返回安全界面..." _p || true
+            return 0
+        fi
+    fi
+    error "遭遇官方源封锁或 IPv6 数据穿透故障，导致数据拉取完全被阻隔。"
+    local _p=""; read -rp "按 Enter 关闭进程..." _p || true
+    return 1
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x16: SNI 与安全协议无缝重构路由树 ]
+# ------------------------------------------------------------------------------
+
+_update_matrix() {
+    if test ! -f "$CONFIG"; then return; fi
+    echo "[$SNI_JSON_ARRAY]" > /tmp/sni_array.json
+    _safe_jq_write --arg dest "$BEST_SNI:443" --slurpfile snis /tmp/sni_array.json '
+        (.inbounds[]? | select(.protocol == "vless")) |= (
+            .streamSettings.realitySettings.serverNames = $snis[0] |
+            .streamSettings.realitySettings.dest = $dest
+        )
+    '
+    rm -f /tmp/sni_array.json 2>/dev/null || true
+    ensure_xray_is_alive
+    info "网络架构及反识别面具重构完毕，新版防封已加载上线！"
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x17: 全方位工业建仓与协议构建逻辑 ]
+# ------------------------------------------------------------------------------
+
+do_install() {
+    title "Apex Vanguard Ultimate Final: 高维协议建仓与底层核心网组建"
+    preflight
+    
+    systemctl stop xray >/dev/null 2>&1 || true
+    if test ! -f "$INSTALL_DATE_FILE"; then date +"%Y-%m-%d %H:%M:%S" > "$INSTALL_DATE_FILE"; fi
+    
+    echo -e "  ${cyan}决定本次将要搭载的网络体系：${none}"
+    echo "  1) VLESS-Reality (极致安全伪装架构 / 防止主动探测阻断)"
+    echo "  2) Shadowsocks (抛却重负载，极速穿透轻量备用网)"
+    echo "  3) 启用高可用并行搭载系统 (双通道并发部署)"
+    local proto_choice=""
+    read -rp "  执行命令编号 (直接回车默认 1): " proto_choice || true
+    proto_choice=${proto_choice:-1}
+
+    if test "$proto_choice" = "1" || test "$proto_choice" = "3"; then
+        while true; do 
+            local input_p=""
+            read -rp "分配 VLESS 服务数据监听端口 (回车默认绑定 443): " input_p || true
+            input_p=${input_p:-443}
+            if validate_port "$input_p"; then LISTEN_PORT="$input_p"; break; fi
+        done
+        local input_remark=""
+        read -rp "规划 VLESS 节点基础标识名 (默认 xp-reality): " input_remark || true
+        REMARK_NAME=${input_remark:-xp-reality}
+        choose_sni
+        if test $? -ne 0; then return 1; fi
+    fi
+
+    local ss_port=8388
+    local ss_pass=""
+    local ss_method="aes-256-gcm"
+    
+    if test "$proto_choice" = "2" || test "$proto_choice" = "3"; then
+        while true; do 
+            local input_s=""
+            read -rp "分配 Shadowsocks 单向挂载通讯口 (回车默认使用 8388): " input_s || true
+            input_s=${input_s:-8388}
+            if validate_port "$input_s"; then ss_port="$input_s"; break; fi
+        done
+        ss_pass=$(gen_ss_pass)
+        ss_method=$(_select_ss_method)
+        if test "$proto_choice" = "2"; then 
+            local input_remark=""
+            read -rp "配置 SS 面板默认名称 (默认 xp-reality): " input_remark || true
+            REMARK_NAME=${input_remark:-xp-reality}
+        fi
+    fi
+
+    info "从中心枢纽拉取最新的 Xray 核心主程序执行安装流..."
+    if ! bash -c "$(curl -fsSL --connect-timeout 10 https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh)" @ install >/dev/null 2>&1; then
+        warn "因云端问题主脚本直连失败，但环境未遭破坏，稍后请在控制面板尝试执行手动核心更新操作。"
+    fi
+    install_update_dat
+    fix_xray_systemd_limits
+
+    # 1. 纯净构建初始 JSON 路由表，AsIs 解耦
+    cat > "$CONFIG" <<EOF
+{
+  "log": { "loglevel": "warning" },
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      { "outboundTag": "block", "_enabled": true, "protocol": ["bittorrent"] },
+      { "outboundTag": "block", "_enabled": true, "ip": ["geoip:cn"] },
+      { "outboundTag": "block", "_enabled": true, "domain": ["geosite:cn", "geosite:category-ads-all"] }
+    ]
+  },
+  "inbounds": [],
+  "outbounds": [
+      { "protocol": "freedom", "tag": "direct", "settings": {"domainStrategy": "AsIs"} }, 
+      { "protocol": "blackhole", "tag": "block" }
+  ]
+}
+EOF
+
+    # 2. 以 HereDoc 构建 VLESS 协议的绝对安全写入
+    if test "$proto_choice" = "1" || test "$proto_choice" = "3"; then
+        local keys=$("$XRAY_BIN" x25519 2>/dev/null || echo "")
+        local priv=$(echo "$keys" | grep -i "Private" | awk -F': ' '{print $2}' | tr -d ' \r\n' || echo "")
+        local pub=$(echo "$keys" | grep -i "Public" | awk -F': ' '{print $2}' | tr -d ' \r\n' || echo "")
+        local uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || "$XRAY_BIN" uuid)
+        local sid=$(head -c 8 /dev/urandom | xxd -p | tr -d '\n\r' || echo "")
+        local ctime=$(date +"%Y-%m-%d %H:%M")
+        
+        echo "$pub" > "$PUBKEY_FILE"
+        echo "$uuid|$ctime" > "$USER_TIME_MAP"
+        
+        echo "[$SNI_JSON_ARRAY]" > /tmp/sni_array.json
+        cat > /tmp/vless_inbound.json <<EOF
+{
+  "tag": "vless-reality", 
+  "listen": "0.0.0.0", 
+  "port": $LISTEN_PORT, 
+  "protocol": "vless",
+  "settings": {
+      "clients": [ {"id": "$uuid", "flow": "xtls-rprx-vision", "email": "$REMARK_NAME"} ], 
+      "decryption": "none"
+  },
+  "streamSettings": {
+    "network": "tcp", 
+    "security": "reality",
+    "sockopt": {"tcpNoDelay": true, "tcpFastOpen": true},
+    "realitySettings": {
+        "dest": "$BEST_SNI:443", 
+        "serverNames": [], 
+        "privateKey": "$priv", 
+        "publicKey": "$pub", 
+        "shortIds": ["$sid"],
+        "limitFallbackUpload": {"afterBytes": 0, "bytesPerSec": 0, "burstBytesPerSec": 0},
+        "limitFallbackDownload": {"afterBytes": 0, "bytesPerSec": 0, "burstBytesPerSec": 0}
+    }
+  },
+  "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"] }
+}
+EOF
+        _safe_jq_write --slurpfile snis /tmp/sni_array.json --slurpfile vless_tmp /tmp/vless_inbound.json '
+            .inbounds += [ $vless_tmp[0] | .streamSettings.realitySettings.serverNames = $snis[0] ]
+        '
+        rm -f /tmp/vless_inbound.json /tmp/sni_array.json 2>/dev/null || true
+    fi
+
+    # 3. 构建 SS
+    if test "$proto_choice" = "2" || test "$proto_choice" = "3"; then
+        cat > /tmp/ss_inbound.json <<EOF
+{
+  "tag": "shadowsocks", 
+  "listen": "0.0.0.0", 
+  "port": $ss_port, 
+  "protocol": "shadowsocks",
+  "settings": { "method": "$ss_method", "password": "$ss_pass", "network": "tcp,udp" },
+  "streamSettings": { "sockopt": {"tcpNoDelay": true, "tcpFastOpen": true} }
+}
+EOF
+        _safe_jq_write --slurpfile ss_tmp /tmp/ss_inbound.json '.inbounds += [ $ss_tmp[0] ]'
+        rm -f /tmp/ss_inbound.json 2>/dev/null || true
+    fi
+
+    fix_permissions
+    systemctl enable xray >/dev/null 2>&1 || true
+    
+    if ensure_xray_is_alive; then
+        info "所有架构配置装载确认生效！通讯网络已打开。"
+        do_summary
+    else
+        error "未能顺利贯通服务进程，内部存在数据阻断，请详细勘验报错日志档案。"
+        return 1
+    fi
+    
+    while true; do
+        local opt=""
+        read -rp "可按下 Enter 键安全返回系统中心菜单，亦或输入 b 即刻执行 SNI 的网络更换及漂移: " opt || true
+        if test "$opt" = "b" || test "$opt" = "B"; then
+            if choose_sni; then _update_matrix; do_summary; else break; fi
+        else 
+            break
+        fi
+    done
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x23: 全系统底层绝对清除与终结机制 ]
+# ------------------------------------------------------------------------------
+
+do_uninstall() {
+    title "终极断供清理器：彻底摧毁当前生态环境并回卷"
+    local confirm=""
+    read -rp "此不可逆物理毁灭指令将被下达，将会摧毁私钥记录及 DNS 强行配置 (但网卡级与并发级设定保留)，您完全明确此行为吗？(y/n): " confirm || true
+    if test "$confirm" != "y"; then return; fi
+    
+    info "安全门禁确认，彻底开始核心粉碎行动..."
+    systemctl stop dnsmasq >/dev/null 2>&1 || true
+    systemctl disable dnsmasq >/dev/null 2>&1 || true
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get purge -y dnsmasq >/dev/null 2>&1 || true
+    
+    chattr -i /etc/resolv.conf 2>/dev/null || true
+    if test -f /etc/resolv.conf.bak; then mv -f /etc/resolv.conf.bak /etc/resolv.conf 2>/dev/null || true; fi
+    
+    systemctl stop xray >/dev/null 2>&1 || true
+    systemctl disable xray >/dev/null 2>&1 || true
+    rm -rf /etc/systemd/system/xray* /lib/systemd/system/xray* >/dev/null 2>&1 || true
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    
+    rm -rf "$CONFIG_DIR" "$DAT_DIR" "$XRAY_BIN" "$SCRIPT_DIR" /var/log/xray* /usr/local/bin/xrv "$SCRIPT_PATH" >/dev/null 2>&1 || true
+    
+    local temp_cron=$(mktemp /tmp/cron_XXXXXX) || true
+    if test -f "$temp_cron"; then
+        crontab -l 2>/dev/null | grep -v "update-dat.sh" | grep -v "systemctl restart xray" | grep -v "cc1.sh" > "$temp_cron" || true
+        crontab "$temp_cron" 2>/dev/null || true
+        rm -f "$temp_cron" 2>/dev/null || true
+    fi
+    info "物理痕迹及所有配置文件与组件链路已完全格式化，现网回归系统纯净初始状态！"
+    exit 0
+}
+
+# ------------------------------------------------------------------------------
+# [ 0x24: 战舰大屏与中央主节点路由管理台 ]
+# ------------------------------------------------------------------------------
+
+main_menu() {
+    while true; do
+        clear
+        echo -e "${blue}======================================================================${none}"
+        echo -e "  ${magenta}Xray System Advanced Management V193 - (The Apex Vanguard)${none}"
+        
+        local svc=$(systemctl is-active xray 2>/dev/null || echo "inactive")
+        if test "$svc" = "active"; then 
+            svc="${green}平稳在线 (Running)${none}"
+        else 
+            svc="${red}离线静默 (Stopped)${none}"
+        fi
+        
+        local sys_ver=$(uname -r 2>/dev/null || echo "未探测到数据")
+        echo -e "  引擎态势: $svc | 全局快捷指令: ${cyan}xrv${none} | 外部识别 IP: ${yellow}$(_get_ip || echo "探测异常")${none}"
+        echo -e "  系统装配内核: ${cyan}${sys_ver}${none} | 所属构建号: V${SCRIPT_VERSION}"
+        echo -e "${blue}======================================================================${none}"
+        echo "  1) 创建/重构 安全底层全加密协议网络连接 (VLESS/SS)"
+        echo "  2) 用户凭证生命周期与独立参数化管理控制"
+        echo "  3) 节点链接与多维信息输出聚合中心"
+        echo "  4) 人工发起数据强联，执行路由解析规则库强制覆盖更新"
+        echo "  5) 在线平滑热更新主程序底层 Core 环境"
+        echo "  6) 修改或全自动剔除被拦截的防封伪装特征矩阵域名"
+        echo "  7) 系统防火墙策略配置 (阻止内网 BT 滥用及第三方广告请求)"
+        echo "  8) Reality Fallback 底层限速沙盒分析器"
+        echo "  9) 全景网络连接审计日志与商用级别网络流量记账本"
+        echo "  10) 高级发烧：网卡/系统协议栈/内核 60 余项极客深度极限配置"
+        echo "  0) 折叠命令控制台，返回底层终端"
+        echo -e "  ${red}88) 物理不可逆自毁！撤销环境安全防线与系统配置设定${none}"
+        hr
+        
+        local num=""
+        read -rp "请输入操作代码指令: " num || true
+        
+        case "${num:-}" in
+            1) do_install ;;
+            2) do_user_manager ;;
+            3) 
+                do_summary
+                while true; do 
+                    local rb=""
+                    read -rp "当前配置输出完毕，按 Enter 退出或者按 b 发起特征矩阵的更替指令: " rb || true
+                    if test "$rb" = "b" || test "$rb" = "B"; then 
+                        if choose_sni; then _update_matrix; do_summary; else break; fi
+                    else 
+                        break
+                    fi
+                done 
+                ;;
+            4) 
+                print_magenta ">>> 初始化云网络联通中，即将发起底层拉取..."
+                bash "$UPDATE_DAT_SCRIPT" >/dev/null 2>&1 || true
+                ensure_xray_is_alive
+                info "配置数据已穿透替换系统！当前路由库完成热加载！"
+                local _p=""; read -rp "按 Enter 退回安全环境..." _p || true 
+                ;;
+            5) do_update_core ;;
+            6) 
+                if choose_sni; then 
+                    _update_matrix
+                    do_summary
+                    while true; do 
+                        local rb=""
+                        read -rp "任务完毕，请直接按 Enter 返回，或再次敲击 b 开启连续变更模式: " rb || true
+                        if test "$rb" = "b" || test "$rb" = "B"; then 
+                            if choose_sni; then _update_matrix; do_summary; else break; fi
+                        else 
+                            break
+                        fi
+                    done
+                fi 
+                ;;
+            7) _global_block_rules ;;
+            8) do_fallback_probe ;;
+            9) do_status_menu ;;
+            10) do_sys_init_menu ;;
+            88) do_uninstall ;;
+            0) exit 0 ;;
+            *) echo -e "${red}错误拦截：代码解析为空值，请勿操作不合规的非法数据命令！${none}"; sleep 1 ;;
+        esac
+    done
+}
+
+# ==============================================================================
+# 系统环境预制防爆加载及主控接管触发器
+# ==============================================================================
+preflight
+main_menu
+# ==============================================================================
+# EOF - Apex Vanguard V193 System Advanced Control Ready.
+# ==============================================================================
