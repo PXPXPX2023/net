@@ -1034,8 +1034,9 @@ do_xanmod_compile() {
         info "工作区默认路由至: /usr/src"
     fi
 
+    # 【重点修复 1：补齐所有可能用到的内核压缩算法工具，特别是 lz4】
     apt-get update -y >/dev/null 2>&1 || true
-    apt-get install -y build-essential bc bison flex libssl-dev libelf-dev libncurses-dev zstd git wget curl xz-utils ethtool numactl make pkg-config dwarves rsync python3 libdw-dev cpio >/dev/null 2>&1 || true
+    apt-get install -y build-essential bc bison flex libssl-dev libelf-dev libncurses-dev zstd lz4 lzma bzip2 git wget curl xz-utils ethtool numactl make pkg-config dwarves rsync python3 libdw-dev cpio >/dev/null 2>&1 || true
 
     local CPU
     CPU=$(nproc 2>/dev/null || echo 1)
@@ -1137,24 +1138,20 @@ do_xanmod_compile() {
     ./scripts/config --disable NET_VENDOR_REALTEK
     ./scripts/config --disable NET_VENDOR_BROADCOM
     
-    # 【核心手术】彻底关闭模块签名，彻底清空密钥字符串，免疫 pem 报错！
+    # 【重点修复 2：彻底粉碎模块签名与证书锁，使用 sed 物理清零】
     ./scripts/config --disable MODULE_SIG
     ./scripts/config --disable MODULE_SIG_ALL
     ./scripts/config --disable SYSTEM_TRUSTED_KEYRING
     ./scripts/config --disable SYSTEM_REVOCATION_LIST
-    ./scripts/config --set-str SYSTEM_TRUSTED_KEYS ""
-    ./scripts/config --set-str SYSTEM_REVOCATION_KEYS ""
-    ./scripts/config --set-str MODULE_SIG_KEY ""
+    
+    sed -i 's/CONFIG_SYSTEM_TRUSTED_KEYS=.*/CONFIG_SYSTEM_TRUSTED_KEYS=""/g' .config 2>/dev/null || true
+    sed -i 's/CONFIG_SYSTEM_REVOCATION_KEYS=.*/CONFIG_SYSTEM_REVOCATION_KEYS=""/g' .config 2>/dev/null || true
+    sed -i 's/CONFIG_MODULE_SIG_KEY=.*/CONFIG_MODULE_SIG_KEY=""/g' .config 2>/dev/null || true
     
     # 彻底关闭调试信息，防止内存爆掉
     ./scripts/config --disable DEBUG_INFO
     ./scripts/config --disable DEBUG_INFO_BTF
     ./scripts/config --disable DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
-    
-    # 【双重物理保险】防止系统老蓝本配置反扑复活
-    sed -i 's/CONFIG_SYSTEM_TRUSTED_KEYS=.*/CONFIG_SYSTEM_TRUSTED_KEYS=""/g' .config 2>/dev/null || true
-    sed -i 's/CONFIG_SYSTEM_REVOCATION_KEYS=.*/CONFIG_SYSTEM_REVOCATION_KEYS=""/g' .config 2>/dev/null || true
-    sed -i 's/CONFIG_MODULE_SIG_KEY=.*/CONFIG_MODULE_SIG_KEY=""/g' .config 2>/dev/null || true
     
     info "重新对齐最终无污染配置..."
     yes "" | make olddefconfig >/dev/null 2>&1 || true
