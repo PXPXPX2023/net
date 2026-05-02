@@ -1108,7 +1108,7 @@ do_xanmod_compile() {
     if test -f "/boot/config-$(uname -r)"; then
         cp "/boot/config-$(uname -r)" .config
         info "已成功提取当前内核配置作为蓝本。"
-    else
+else
         if modprobe configs 2>/dev/null; then
             if test -f /proc/config.gz; then
                 zcat /proc/config.gz > .config
@@ -1118,6 +1118,14 @@ do_xanmod_compile() {
             fi
         else
             make defconfig >/dev/null 2>&1 || true
+        fi
+    fi
+    
+    # [新增护盾] 强行用回车键塞住它要问的所有问题！
+    info "正在抹平新老内核代差，自动执行静默确认..."
+    yes "" | make olddefconfig >/dev/null 2>&1 || true
+    
+    make scripts >/dev/null 2>&1 || true
         fi
     fi
     
