@@ -1144,15 +1144,20 @@ do_xanmod_compile() {
     ./scripts/config --enable CONFIG_VIRTIO_NET
     ./scripts/config --enable CONFIG_SCSI_VIRTIO
     ./scripts/config --enable CONFIG_HW_RANDOM_VIRTIO
-    
-    # 剔除臃肿驱动与阻碍编译的签名校验
+# 剔除臃肿驱动与阻碍编译的签名校验
     ./scripts/config --disable CONFIG_DRM_I915
     ./scripts/config --disable CONFIG_NET_VENDOR_REALTEK
     ./scripts/config --disable CONFIG_NET_VENDOR_BROADCOM
-    ./scripts/config --disable SYSTEM_TRUSTED_KEYS
-    ./scripts/config --disable SYSTEM_REVOCATION_KEYS
-    ./scripts/config --disable DEBUG_INFO_BTF
-    ./scripts/config --disable DEBUG_INFO
+    
+    # [核心修复] 暴力粉碎 Debian/Ubuntu 祖传的内核模块私钥签名依赖！
+    sed -i 's/CONFIG_SYSTEM_TRUSTED_KEYS=.*/CONFIG_SYSTEM_TRUSTED_KEYS=""/g' .config
+    sed -i 's/CONFIG_SYSTEM_REVOCATION_KEYS=.*/CONFIG_SYSTEM_REVOCATION_KEYS=""/g' .config
+    sed -i 's/CONFIG_MODULE_SIG_KEY=.*/CONFIG_MODULE_SIG_KEY=""/g' .config
+    
+    # 补齐 CONFIG_ 前缀，彻底关闭导致爆内存的 BTF 调试信息
+    ./scripts/config --disable CONFIG_DEBUG_INFO_BTF
+    ./scripts/config --disable CONFIG_DEBUG_INFO
+    ./scripts/config --disable CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
     
     yes "" | make olddefconfig >/dev/null 2>&1 || true
 
