@@ -860,48 +860,54 @@ check_and_create_1gb_swap() {
 # ------------------------------------------------------------------------------
 
 do_install_xanmod_main_official() {
-    title "系统飞升：安装官方预编译 XANMOD 内核"
+    title "安装预编译 XANMOD 内核 (融合 GitHub 镜像加速)"
     
     if [[ "$(uname -m)" != "x86_64" ]]; then
-        error "系统架构不匹配：仅支持 x86_64 架构！"
+        error "系统架构不匹配：仅支持 x86_64！"
         return 1
     fi
 
-    print_magenta ">>> [1/3] 正在配置 Xanmod 官方 APT 仓库与 GPG 密钥..."
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update -y >/dev/null 2>&1
-    apt-get install -y gnupg gnupg2 curl wget ca-certificates >/dev/null 2>&1
-
-    # 清理旧的错误源
-    rm -f /etc/apt/trusted.gpg.d/xanmod-kernel.gpg /etc/apt/sources.list.d/xanmod-kernel.list /etc/apt/sources.list.d/xanmod-release.list
-    
-    # 现代化规范导入 GPG Key
-    curl -fsSL https://dl.xanmod.org/archive.key | gpg --dearmor --yes -o /usr/share/keyrings/xanmod-archive-keyring.gpg
-    echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' > /etc/apt/sources.list.d/xanmod-release.list
-
-    print_magenta ">>> [2/3] 正在检测 CPU 微架构支持级别..."
+    info "检测 CPU 微架构级别..."
     wget -qO check_x86-64_psabi.sh https://dl.xanmod.org/check_x86-64_psabi.sh
     chmod +x check_x86-64_psabi.sh
     local cpu_level=$(./check_x86-64_psabi.sh | awk -F 'v' '{print $2}' || echo "1")
     rm -f check_x86-64_psabi.sh
-    
     [[ -z "$cpu_level" ]] && cpu_level=1
-    info "当前 CPU 完美支持的微架构级别为: v${cpu_level}"
+    info "当前 CPU 完美支持: v${cpu_level}"
 
-    print_magenta ">>> [3/3] 正在安装 linux-xanmod-x64v${cpu_level} 内核..."
+    # 临时关闭严格模式防止 apt update 警告导致退网
+    set +e
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -y >/dev/null 2>&1
+    apt-get install -y gnupg gnupg2 curl wget ca-certificates jq >/dev/null 2>&1
+
+    # 重置官方源
+    rm -f /etc/apt/sources.list.d/xanmod-*.list /etc/apt/trusted.gpg.d/xanmod-*.gpg
+    curl -fsSL https://dl.xanmod.org/archive.key | gpg --dearmor --yes -o /usr/share/keyrings/xanmod-archive-keyring.gpg
+    echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' > /etc/apt/sources.list.d/xanmod-release.list
+
     apt-get update -y
-    
     local pkg_name="linux-xanmod-x64v${cpu_level}"
     
+    info "尝试从官方源安装: $pkg_name ..."
     if ! apt-get install -y "$pkg_name"; then
-        warn "精准包名寻址失败，尝试模糊匹配并安装最新 Xanmod..."
-        local fallback_pkg=$(apt-cache search "linux-image-.*xanmod" | grep -vE "dbg|headers" | sort -V | tail -n 1 | awk '{print $1}')
-        if [[ -z "$fallback_pkg" ]]; then
-            error "彻底寻址失败！请排查网络是否屏蔽了 deb.xanmod.org！"
+        warn "官方 APT 源被阻断，启动 GitHub 镜像加速备用方案..."
+        
+        # 借用 tcpx 的思路：直连 GitHub API 获取 deb
+        local api_url="https://api.github.com/repos/xanmod/linux/releases/latest"
+        local dl_url=$(curl -sL "$api_url" | grep "browser_download_url" | grep "x64v${cpu_level}.deb" | head -n 1 | cut -d '"' -f 4)
+        
+        if [[ -n "$dl_url" ]]; then
+            info "正在通过镜像节点下载: $dl_url"
+            wget --no-check-certificate -O /tmp/xanmod.deb "https://ghfast.top/${dl_url}"
+            dpkg -i /tmp/xanmod.deb
+            apt-get install -f -y
+            rm -f /tmp/xanmod.deb
+        else
+            error "彻底寻址失败！GitHub API 和 APT 均不可用。"
+            set -e
             return 1
         fi
-        info "找到备用包: $fallback_pkg，准备安装..."
-        apt-get install -y "$fallback_pkg" || return 1
     fi
 
     if command -v update-grub >/dev/null 2>&1; then
@@ -909,8 +915,9 @@ do_install_xanmod_main_official() {
     else
         apt-get install -y grub2-common && update-grub
     fi
-
-    info "官方预编译 XANMOD 部署完成！10 秒后将自动重启..."
+    
+    set -e # 恢复严格模式
+    info "XANMOD 部署完成！10 秒后自动重启..."
     sleep 10
     reboot
 }
@@ -920,42 +927,41 @@ do_install_xanmod_main_official() {
 # ------------------------------------------------------------------------------
 
 do_xanmod_compile() {
-    title "系统飞升：源码编译 XANMOD 官方内核 + BBR3"
-    warn "警告: 这是一个极其漫长的过程 (30-60分钟)，请确保 SSH 连接稳定！"
-    read -rp "确定要执意开始源码编译吗？(y/n): " confirm
+    title "源码编译 XANMOD 官方内核 + BBR3"
+    read -rp "编译需 30-60 分钟，确定开始？(y/n): " confirm
     [[ ! "$confirm" =~ ^[yY]$ ]] && return
 
     export DEBIAN_FRONTEND=noninteractive
     apt-get clean && apt-get autoremove -y --purge
 
-    title "=== [1/5] 配置 1GB 编译缓冲交换区 (Swap) ==="
     check_and_create_1gb_swap
 
-    title "=== [2/5] 拉取 GCC 编译套件与依赖库 ==="
-    local BUILD_DIR="/usr/src"
+    info "拉取编译依赖..."
     apt-get update -y
     apt-get install -y build-essential bc bison flex libssl-dev libelf-dev libncurses-dev zstd lz4 liblz4-tool lzma bzip2 git wget curl xz-utils ethtool make pkg-config dwarves rsync python3 libdw-dev cpio
 
     local CPU=$(nproc 2>/dev/null || echo 1)
-    local THREADS=$CPU
-
-    title "=== [3/5] 拉取 Xanmod 最新源码 ==="
+    local BUILD_DIR="/usr/src"
     cd "$BUILD_DIR" || return 1
+
+    info "拉取 Xanmod 源码..."
     local XANMOD_TAG=$(curl -sL "https://gitlab.com/api/v4/projects/xanmod%2Flinux/repository/tags" | jq -r '.[0].name' | grep -v "rc" | head -n 1)
-    [[ -z "$XANMOD_TAG" || "$XANMOD_TAG" == "null" ]] && XANMOD_TAG="6.18.25-rt-xanmod1"
+    [[ -z "$XANMOD_TAG" || "$XANMOD_TAG" == "null" ]] && XANMOD_TAG="6.1.85-rt-xanmod1"
     
     local KERNEL_URL="https://gitlab.com/xanmod/linux/-/archive/${XANMOD_TAG}/linux-${XANMOD_TAG}.tar.gz"
-    local KERNEL_FILE="xanmod-${XANMOD_TAG}.tar.gz"
+    wget -q --show-progress "$KERNEL_URL" -O xanmod.tar.gz
+    tar -xzf xanmod.tar.gz || { error "解压失败"; return 1; }
     
-    wget -q --show-progress "$KERNEL_URL" -O "$KERNEL_FILE"
-    tar -xzf "$KERNEL_FILE" || { error "解压失败"; return 1; }
-    cd "linux-${XANMOD_TAG}" || return 1
+    # 模糊匹配解压后的目录名，防止目录命名变动导致 cd 失败
+    local KERNEL_DIR=$(tar -tzf xanmod.tar.gz | head -1 | cut -f1 -d"/")
+    cd "$KERNEL_DIR" || { error "源码目录进入失败"; return 1; }
 
-    title "=== [4/5] 生成并规范化内核配置 ==="
+    info "生成并规范化内核配置..."
+    
+    # 核心修复点：关闭 set -e 防自毁机制
+    set +e 
     if [[ -f "/boot/config-$(uname -r)" ]]; then
         cp "/boot/config-$(uname -r)" .config
-    elif modprobe configs 2>/dev/null && [[ -f /proc/config.gz ]]; then
-        zcat /proc/config.gz > .config
     else
         make defconfig
     fi
@@ -963,29 +969,25 @@ do_xanmod_compile() {
     yes "" | make olddefconfig >/dev/null 2>&1
     make scripts >/dev/null 2>&1
 
-    # 正规方式开启 X86_64_V2 (抛弃危险的 sed physical destruction)
-    ./scripts/config --enable GENERIC_CPU
-    ./scripts/config --disable GENERIC_CPU_V1
-    ./scripts/config --enable GENERIC_CPU_V2
-    ./scripts/config --enable X86_64_V2
-    ./scripts/config --enable VIRTIO
-
-    ./scripts/config --disable MODULE_SIG
-    ./scripts/config --disable MODULE_SIG_ALL
-    ./scripts/config --disable SYSTEM_TRUSTED_KEYRING
-    ./scripts/config --disable SYSTEM_REVOCATION_LIST
-    ./scripts/config --disable DEBUG_INFO
+    # 屏蔽标准错误输出，遇到废弃参数不再崩溃
+    ./scripts/config --enable GENERIC_CPU 2>/dev/null
+    ./scripts/config --disable GENERIC_CPU_V1 2>/dev/null
+    ./scripts/config --enable GENERIC_CPU_V2 2>/dev/null
+    ./scripts/config --enable X86_64_V2 2>/dev/null
+    ./scripts/config --enable VIRTIO 2>/dev/null
+    ./scripts/config --disable MODULE_SIG 2>/dev/null
+    ./scripts/config --disable SYSTEM_TRUSTED_KEYRING 2>/dev/null
+    ./scripts/config --disable DEBUG_INFO 2>/dev/null
     
     sed -i 's/CONFIG_SYSTEM_TRUSTED_KEYS=.*/CONFIG_SYSTEM_TRUSTED_KEYS=""/g' .config
     sed -i 's/CONFIG_SYSTEM_REVOCATION_KEYS=.*/CONFIG_SYSTEM_REVOCATION_KEYS=""/g' .config
 
     yes "" | make olddefconfig >/dev/null 2>&1
+    set -e # 重启严格模式
 
-    title "=== [5/5] 开始执行多线程编译 ==="
-    info "分配并发线程数: $THREADS"
-    if ! make -j"$THREADS"; then
-        error "编译崩溃！请检查物理内存是否溢出或依赖缺失。"
-        read -rp "按 Enter 返回主菜单..." _p
+    info "开始多线程编译 (并发线程: $CPU)..."
+    if ! make -j"$CPU"; then
+        error "编译崩溃！物理内存溢出或依赖缺失。"
         return 1
     fi
 
@@ -993,16 +995,12 @@ do_xanmod_compile() {
     make install
 
     local NEW_KERNEL_VER=$(make -s kernelrelease)
-    if [[ -n "$NEW_KERNEL_VER" ]]; then
-        if command -v update-initramfs >/dev/null; then
-            update-initramfs -c -k "$NEW_KERNEL_VER"
-        fi
-    fi
+    [[ -n "$NEW_KERNEL_VER" ]] && command -v update-initramfs >/dev/null && update-initramfs -c -k "$NEW_KERNEL_VER"
 
     command -v update-grub >/dev/null && update-grub
     
     cd /
-    rm -rf "$BUILD_DIR/linux-"* "$BUILD_DIR/xanmod-"*
+    rm -rf "$BUILD_DIR/linux-"* "$BUILD_DIR/xanmod.tar.gz"
     
     info "源码编译顺利结束！15 秒后自动重启..."
     sleep 15
