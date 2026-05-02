@@ -982,6 +982,10 @@ do_install_xanmod_main_official() {
 # [ 0x08: 编译安装原生 Linux 主线内核 + BBR3 (全量 VIRTIO 防砖版) ]
 # ------------------------------------------------------------------------------
 
+# ------------------------------------------------------------------------------
+# [ 0x08: 编译安装原生 Linux 主线内核 + BBR3 (全量 VIRTIO 防砖版) ]
+# ------------------------------------------------------------------------------
+
 do_xanmod_compile() {
     title "系统飞升：编译安装 主线内核 + BBR3 (极客锻造模式)"
     
@@ -1108,7 +1112,7 @@ do_xanmod_compile() {
     if test -f "/boot/config-$(uname -r)"; then
         cp "/boot/config-$(uname -r)" .config
         info "已成功提取当前内核配置作为蓝本。"
-else
+    else
         if modprobe configs 2>/dev/null; then
             if test -f /proc/config.gz; then
                 zcat /proc/config.gz > .config
@@ -1124,10 +1128,6 @@ else
     # [新增护盾] 强行用回车键塞住它要问的所有问题！
     info "正在抹平新老内核代差，自动执行静默确认..."
     yes "" | make olddefconfig >/dev/null 2>&1 || true
-    
-    make scripts >/dev/null 2>&1 || true
-        fi
-    fi
     
     make scripts >/dev/null 2>&1 || true
     
