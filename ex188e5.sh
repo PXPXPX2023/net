@@ -896,8 +896,8 @@ do_install_xanmod_main_official() {
     fi
     
     if test -z "$cpu_level"; then
-        cpu_level=1
-        warn "未能精确检测 CPU 微架构级别，将默认降级使用系统最宽容的 v1 兼容版本。"
+        cpu_level=2 # 官方已大量下线 v1 包，默认保底升级为 v2 架构以避免 404
+        warn "未能精确检测 CPU 微架构级别，将默认使用基础 v2 兼容版本。"
     else
         info "评估完成，当前 CPU 硬件完美支持的微架构最高级别为: v${cpu_level}"
     fi
@@ -908,63 +908,53 @@ do_install_xanmod_main_official() {
     apt-get update -y >/dev/null 2>&1 || true
     apt-get install -y gnupg gnupg2 curl sudo wget e2fsprogs ca-certificates lsb-release >/dev/null 2>&1 || true
 
-    # 【核心修复 1：彻底清理旧版源残留，部署 2025 最新官方 Keyring 规范】
-    rm -f /etc/apt/trusted.gpg.d/xanmod-kernel.gpg 2>/dev/null || true
-    rm -f /etc/apt/sources.list.d/xanmod-kernel.list 2>/dev/null || true
-    
+    # 【终极修复 1：采用 ASCII armored 直通导入，避开精简系统 gpg dearmor 报错】
     mkdir -p /usr/share/keyrings 2>/dev/null || true
-    if ! wget -qO - https://dl.xanmod.org/archive.key | gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg --yes 2>/dev/null; then
-        error "从远端导入 GPG 密钥链发生错误，官方源可能受限！"
+    rm -f /etc/apt/trusted.gpg.d/xanmod-kernel.gpg /etc/apt/sources.list.d/xanmod-kernel.list /etc/apt/sources.list.d/xanmod-release.list 2>/dev/null || true
+    
+    if ! wget -qO - https://dl.xanmod.org/archive.key | tee /usr/share/keyrings/xanmod-archive-keyring.asc >/dev/null 2>&1; then
+        error "从远端获取 GPG 密钥链发生错误，官方源可能受限！"
         return 1
     fi
     
-    echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' > /etc/apt/sources.list.d/xanmod-release.list
+    echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.asc] http://deb.xanmod.org releases main' > /etc/apt/sources.list.d/xanmod-release.list
 
     print_magenta ">>> [3/4] 正在触发 APT 智能降级寻址阵列..."
     
+    # 强制刷新源列表，捕获最新包单
     apt-get update -y >/dev/null 2>&1 || true
-    local pkg_name="linux-xanmod-x64v${cpu_level}"
     
+    local pkg_name=""
     set +e
-    local pkg_exists
-    pkg_exists=$(apt-cache show "$pkg_name" 2>/dev/null || echo "")
+    # 采用高精度降级寻址算法：如果 v3 找不到，自动向下找 v2，规避官方清空老包的断层
+    for v in $(seq "$cpu_level" -1 1); do
+        local try_pkg="linux-xanmod-x64v${v}"
+        if apt-cache show "$try_pkg" >/dev/null 2>&1; then
+            pkg_name="$try_pkg"
+            break
+        fi
+    done
+    
+    if test -z "$pkg_name"; then
+        warn "标准架构包名全线脱靶，正在唤醒 APT 模糊寻址雷达..."
+        pkg_name=$(apt-cache search "linux-image-.*xanmod" | grep -vE "dbg|headers" | awk '{print $1}' | head -n 1 || echo "")
+    fi
     set -e
     
-    if test -z "$pkg_exists"; then
-        warn "未找到标准包名 $pkg_name，正在唤醒 APT 模糊寻址雷达..."
-        local alt_pkg
-        set +e
-        alt_pkg=$(apt-cache search "linux-image-.*xanmod.*x64v${cpu_level}" 2>/dev/null | grep -vE "dbg|headers" | awk '{print $1}' | head -n 1 || echo "")
-        set -e
-        
-        if test -n "$alt_pkg"; then
-            info "成功修正雷达寻址坐标！锁定目标底层包: $alt_pkg"
-            pkg_name="$alt_pkg"
-        else
-            warn "同级衍生包寻址失败，安全回退至 v1 保底版本..."
-            pkg_name="linux-xanmod-x64v1"
-            
-            set +e
-            local safe_exists
-            safe_exists=$(apt-cache show "$pkg_name" 2>/dev/null || echo "")
-            set -e
-            
-            if test -z "$safe_exists"; then
-                local safe_pkg
-                set +e
-                safe_pkg=$(apt-cache search "linux-image-.*xanmod.*x64v1" 2>/dev/null | grep -vE "dbg|headers" | awk '{print $1}' | head -n 1 || echo "")
-                set -e
-                if test -n "$safe_pkg"; then
-                    pkg_name="$safe_pkg"
-                fi
-            fi
-        fi
+    if test -z "$pkg_name"; then
+        error "保底寻址宣告失败！当前系统源无法解析到任何合法的 Xanmod 预编译包。"
+        error "这通常意味着您的系统版本(如 Debian 10 / Ubuntu 18.04)已被官方彻底抛弃。"
+        local _pause=""
+        read -rp "按 Enter 继续..." _pause || true
+        return 1
     fi
     
+    info "寻址成功！锁定云端目标底层包: $pkg_name"
+
     print_magenta ">>> [4/4] 正在向主系统强行注入战舰级内核: $pkg_name ..."
     
     if ! apt-get install -y "$pkg_name"; then
-        error "保底安装宣告失败，内核替换进程中止。请排查物理网络环境与 APT 源配置！"
+        error "内核部署被系统 APT 进程拦截。请排查物理网络环境与包冲突！"
         local _pause=""
         read -rp "按 Enter 继续..." _pause || true
         return 1
@@ -1037,7 +1027,6 @@ do_xanmod_compile() {
         info "工作区默认路由至: /usr/src"
     fi
 
-    # 【核心修复 2：加入 liblz4-tool lz4 防解压打包断层】
     apt-get update -y >/dev/null 2>&1 || true
     apt-get install -y build-essential bc bison flex libssl-dev libelf-dev libncurses-dev zstd lz4 liblz4-tool lzma bzip2 git wget curl xz-utils ethtool numactl make pkg-config dwarves rsync python3 libdw-dev cpio >/dev/null 2>&1 || true
 
@@ -1115,14 +1104,15 @@ do_xanmod_compile() {
     yes "" | make olddefconfig >/dev/null 2>&1 || true
     make scripts >/dev/null 2>&1 || true
     
-    # 【核心修复 3：彻底拔除导致 gcc 报错的 Xanmod 架构参数 bug】
-    # 强制将 CONFIG_X86_64_VERSION 设为 1，防止 Makefile 拼接出不合法的 -march=x86-64-v
-    sed -i 's/CONFIG_X86_64_VERSION=.*/CONFIG_X86_64_VERSION=1/g' .config 2>/dev/null || true
-    if ! grep -q "CONFIG_X86_64_VERSION" .config; then
-        echo "CONFIG_X86_64_VERSION=1" >> .config
-    fi
-    ./scripts/config --enable X86_64_V1
-    ./scripts/config --set-val X86_64_VERSION 1
+    # 【终极修复 2：物理铲除 Xanmod 的 Makefile CPU 架构 Bug】
+    info "正在强行抹除 Xanmod 不兼容的 GCC -march 架构后缀..."
+    sed -i '/CONFIG_X86_64_VERSION/d' .config 2>/dev/null || true
+    ./scripts/config --undefine X86_64_VERSION
+    ./scripts/config --disable X86_64_V1
+    ./scripts/config --disable X86_64_V2
+    ./scripts/config --disable X86_64_V3
+    ./scripts/config --disable X86_64_V4
+    ./scripts/config --enable GENERIC_CPU
     
     info "注入 KVM/Xen 底层虚拟化驱动映射层 (VIRTIO)..."
     ./scripts/config --enable VIRTIO
@@ -1216,7 +1206,6 @@ do_xanmod_compile() {
     sleep 15
     reboot
 }
-
 # ------------------------------------------------------------------------------
 # [ 0x09: 系统内核网络栈极限压榨 (V62 全量 60+ 项网络栈阵列调优) ]
 # ------------------------------------------------------------------------------
