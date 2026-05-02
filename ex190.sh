@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# 脚本名称: ex191.sh (Xray & System Advanced Management v191)
+# 脚本名称: ex190.sh (Xray & System Advanced Management v190)
 # 快捷方式: xrv
 #
-# 【v191 稳定融合版更新日志】
+# 【v190 稳定融合版更新日志】
 #   1. 风格重铸: 全面回归 ex100 稳健的专业日志风格，去除多余冗余词汇。
 #   2. 编译修复: 在 make scripts 之前提前注入 CONFIG_X86_64_VERSION，根治 x86-64-v 编译错误。
 #   3. 源盾升级: 引入完整的 apt-transport-https 与 GPG 规范机制，解决 Debian 源阻断。
@@ -11,7 +11,7 @@
 # ==============================================================================
 
 if test -z "${BASH_VERSION:-}"; then
-    echo "Error: 请使用 bash 执行本脚本: bash ex191.sh"
+    echo "Error: 请使用 bash 执行本脚本: bash ex190.sh"
     exit 1
 fi
 
@@ -2900,7 +2900,7 @@ main_menu() {
     while true; do
         clear
         echo -e "${blue}======================================================================${none}"
-        echo -e "  ${magenta}Xray System Advanced Management v191 - (The Apex Vanguard)${none}"
+        echo -e "  ${magenta}Xray System Advanced Management v190 - (The Apex Vanguard)${none}"
         
         local svc=$(systemctl is-active xray 2>/dev/null || echo "inactive")
         if test "$svc" = "active"; then 
@@ -2979,5 +2979,5 @@ main_menu() {
 preflight
 main_menu
 # ==============================================================================
-# EOF - Apex Vanguard v191 System Advanced Control Ready.
+# EOF - Apex Vanguard v190 System Advanced Control Ready.
 # ==============================================================================
