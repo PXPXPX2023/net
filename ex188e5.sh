@@ -979,11 +979,11 @@ do_install_xanmod_main_official() {
 }
 
 # ------------------------------------------------------------------------------
-# [ 0x08: 编译安装原生 Linux 主线内核 + BBR3 (全量 VIRTIO 防砖版) ]
+# [ 0x08: 编译安装原生 XANMOD 源码内核 + BBR3 (全量 VIRTIO 防砖版) ]
 # ------------------------------------------------------------------------------
 
 do_xanmod_compile() {
-    title "系统飞升：编译安装 主线内核 + BBR3 (极客锻造模式)"
+    title "系统飞升：源码编译 XANMOD 官方内核 + BBR3 (极客锻造模式)"
     
     warn "警告: 这是一个极其漫长的过程 (30-60分钟)，请确保 SSH 连接稳定！"
     local confirm=""
@@ -1007,10 +1007,8 @@ do_xanmod_compile() {
     rm -rf /usr/src/linux* 2>/dev/null || true
     sync
 
-    # inode 节点防爆探测
     local inode_use
     inode_use=$(df -i / 2>/dev/null | awk 'NR==2{print $5}' | tr -d '%' || echo "0")
-    
     if test "$inode_use" -gt 90 2>/dev/null; then
         warn "检测到 inode 节点使用率过高，执行紧急深度释放缓存..."
         rm -rf /var/cache/* 2>/dev/null || true
@@ -1034,16 +1032,14 @@ do_xanmod_compile() {
         info "工作区默认路由至: /usr/src"
     fi
 
-    # 【重点修复 1：补齐所有可能用到的内核压缩算法工具，特别是 lz4】
+    # 【终极修复：增加 liblz4-tool 彻底解决 lz4c not found 报错！】
     apt-get update -y >/dev/null 2>&1 || true
-    apt-get install -y build-essential bc bison flex libssl-dev libelf-dev libncurses-dev zstd lz4 lzma bzip2 git wget curl xz-utils ethtool numactl make pkg-config dwarves rsync python3 libdw-dev cpio >/dev/null 2>&1 || true
+    apt-get install -y build-essential bc bison flex libssl-dev libelf-dev libncurses-dev zstd lz4 liblz4-tool lzma bzip2 git wget curl xz-utils ethtool numactl make pkg-config dwarves rsync python3 libdw-dev cpio >/dev/null 2>&1 || true
 
     local CPU
     CPU=$(nproc 2>/dev/null || echo 1)
-    
     local RAM
     RAM=$(free -m 2>/dev/null | awk '/Mem/{print $2}' || echo 1024)
-    
     local THREADS=1
     
     if test "$RAM" -ge 2000 2>/dev/null; then 
@@ -1054,38 +1050,36 @@ do_xanmod_compile() {
         fi
     fi
 
-    title "=== [4/8] 探测并原生拉取 Kernel 最新的 Stable 稳定版源码 ==="
+    title "=== [4/8] 探测并拉取 Xanmod 官方最新稳定版源码 ==="
     
     if ! cd "$BUILD_DIR"; then
         die "权限异常：系统拒绝切入工作区 $BUILD_DIR。"
     fi
     
-    local KERNEL_URL=""
+    info "正在连接 GitLab 获取 Xanmod 最新分支..."
+    local XANMOD_TAG=""
     set +e
-    KERNEL_URL=$(curl -s https://www.kernel.org/releases.json 2>/dev/null | jq -r '.releases[] | select(.type=="stable") | .tarball' | head -n 1 || echo "")
+    # 动态抓取 Xanmod 官方 GitLab 的最新 release tag
+    XANMOD_TAG=$(curl -sL "https://gitlab.com/api/v4/projects/xanmod%2Flinux/repository/tags" 2>/dev/null | jq -r '.[0].name' | grep -v "rc" | head -n 1 || echo "")
     set -e
     
-    if test -z "$KERNEL_URL"; then 
-        warn "探测 kernel.org 失败，强行锁定备用版本 v6.10..."
-        KERNEL_URL="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.10.tar.xz"
+    if test -z "$XANMOD_TAG" || test "$XANMOD_TAG" = "null"; then 
+        warn "动态寻址失败，强行锁定高可用备用版本 6.10.3-xanmod1..."
+        XANMOD_TAG="6.10.3-xanmod1"
     fi
     
-    if test "$KERNEL_URL" = "null"; then
-        KERNEL_URL="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.10.tar.xz"
-    fi
+    local KERNEL_URL="https://gitlab.com/xanmod/linux/-/archive/${XANMOD_TAG}/linux-${XANMOD_TAG}.tar.gz"
+    local KERNEL_FILE="xanmod-${XANMOD_TAG}.tar.gz"
     
-    local KERNEL_FILE
-    KERNEL_FILE=$(basename "$KERNEL_URL")
-    
-    info "建立直连信道，开始拉取源码包: $KERNEL_FILE"
+    info "建立直连信道，开始拉取 Xanmod 源码包: $KERNEL_FILE"
     wget -q --show-progress "$KERNEL_URL" -O "$KERNEL_FILE"
 
     set +o pipefail
-    if ! tar -tJf "$KERNEL_FILE" >/dev/null 2>&1; then
+    if ! tar -tzf "$KERNEL_FILE" >/dev/null 2>&1; then
         warn "检测到初次获取的源码包发生数据断层，触发重试..."
         rm -f "$KERNEL_FILE" 2>/dev/null || true
         wget -q --show-progress "$KERNEL_URL" -O "$KERNEL_FILE"
-        if ! tar -tJf "$KERNEL_FILE" >/dev/null 2>&1; then
+        if ! tar -tzf "$KERNEL_FILE" >/dev/null 2>&1; then
             set -o pipefail
             error "下载或解压验证连续失败，编译行动强制中止。"
             return 1
@@ -1093,17 +1087,16 @@ do_xanmod_compile() {
     fi
     set -o pipefail
 
-    info "执行 XZ 极致解压，释放内核源码..."
-    tar -xJf "$KERNEL_FILE"
+    info "执行 GZ 极致解压，释放 Xanmod 源码..."
+    tar -xzf "$KERNEL_FILE"
     
-    local KERNEL_DIR
-    KERNEL_DIR="${KERNEL_FILE%.tar.xz}"
+    local KERNEL_DIR="linux-${XANMOD_TAG}"
     
     if ! cd "$KERNEL_DIR"; then
         die "无法切入解压后的源码目录: $KERNEL_DIR。"
     fi
 
-    title "=== [5/8] 注入 VPS 保命驱动 (VIRTIO) 与 BBR3 开启参数 ==="
+    title "=== [5/8] 注入 VPS 保命驱动 (VIRTIO) 与防爆参数 ==="
     
     if test -f "/boot/config-$(uname -r)"; then
         cp "/boot/config-$(uname -r)" .config
@@ -1138,7 +1131,6 @@ do_xanmod_compile() {
     ./scripts/config --disable NET_VENDOR_REALTEK
     ./scripts/config --disable NET_VENDOR_BROADCOM
     
-    # 【重点修复 2：彻底粉碎模块签名与证书锁，使用 sed 物理清零】
     ./scripts/config --disable MODULE_SIG
     ./scripts/config --disable MODULE_SIG_ALL
     ./scripts/config --disable SYSTEM_TRUSTED_KEYRING
@@ -1148,7 +1140,6 @@ do_xanmod_compile() {
     sed -i 's/CONFIG_SYSTEM_REVOCATION_KEYS=.*/CONFIG_SYSTEM_REVOCATION_KEYS=""/g' .config 2>/dev/null || true
     sed -i 's/CONFIG_MODULE_SIG_KEY=.*/CONFIG_MODULE_SIG_KEY=""/g' .config 2>/dev/null || true
     
-    # 彻底关闭调试信息，防止内存爆掉
     ./scripts/config --disable DEBUG_INFO
     ./scripts/config --disable DEBUG_INFO_BTF
     ./scripts/config --disable DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
@@ -1172,8 +1163,7 @@ do_xanmod_compile() {
     boot_free=$(df -m /boot 2>/dev/null | awk 'NR==2 {print $4}' || echo "0")
     
     if test "$boot_free" -lt 200 2>/dev/null; then
-        error "致命拦截：/boot 引导扇区剩余空间 ($boot_free MB) 严重不足！"
-        error "强行执行 make install 必定导致系统彻底变砖！编译主动熔断！"
+        error "致命拦截：/boot 引导扇区剩余空间 ($boot_free MB) 严重不足！编译主动熔断！"
         local _p=""
         read -rp "按 Enter 返回主菜单..." _p || true
         return 1
@@ -1208,9 +1198,9 @@ do_xanmod_compile() {
 
     cd /
     rm -rf "$BUILD_DIR/linux-"* 2>/dev/null || true
-    rm -rf "$BUILD_DIR/$KERNEL_FILE" 2>/dev/null || true
+    rm -rf "$BUILD_DIR/xanmod-"* 2>/dev/null || true
 
-    info "奇迹再现！无污染原装主线内核编译与 Initramfs 挂载全部顺利结束。"
+    info "奇迹再现！纯血版 Xanmod 源码内核编译与 Initramfs 挂载全部顺利结束。"
     warn "老系统将在 15 秒钟内物理退役，请等待自动重启..."
     sleep 15
     reboot
