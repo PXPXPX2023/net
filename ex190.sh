@@ -67,10 +67,11 @@ LISTEN_PORT=443
 if ! mkdir -p "$CONFIG_DIR" "$DAT_DIR" "$SCRIPT_DIR" "$LOG_DIR" "$BACKUP_DIR" "$FLAGS_DIR" 2>/dev/null; then true; fi
 if ! touch "$USER_SNI_MAP" "$USER_TIME_MAP" 2>/dev/null; then true; fi
 
-print_red()    { echo -e "${red}$*${none}"; }
-print_green()  { echo -e "${green}$*${none}"; }
-print_yellow() { echo -e "${yellow}$*${none}"; }
-print_cyan()   { echo -e "${cyan}$*${none}"; }
+print_red()     { echo -e "${red}$*${none}"; }
+print_green()   { echo -e "${green}$*${none}"; }
+print_yellow()  { echo -e "${yellow}$*${none}"; }
+print_magenta() { echo -e "${magenta}$*${none}"; }
+print_cyan()    { echo -e "${cyan}$*${none}"; }
 
 info()  { echo -e "${green}[INFO]${none} $*"; }
 warn()  { echo -e "${yellow}[WARN]${none} $*"; }
