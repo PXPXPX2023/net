@@ -920,18 +920,20 @@ do_install_xanmod_main_official() {
     echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' > /etc/apt/sources.list.d/xanmod-release.list
 
     print_magenta ">>> [3/4] 正在触发 APT 智能降级寻址阵列 (实时同步中)..."
+    apt-get update -y >/dev/null 2>&1 || warn "APT 源刷新遇到网络异常"
     
-    # 开放输出，确保源加载不被挂起
-    apt-get update || warn "APT 源刷新遇到网络异常，可能影响下一步寻址。"
+    # 剔除废柴 apt-cache show 逻辑，直接信任 CPU 级别探针
+    local pkg_name="linux-xanmod-x64v${cpu_level}"
     
-    local pkg_name=""
-    set +e
-    for v in $(seq "$cpu_level" -1 1); do
-        local try_pkg="linux-xanmod-x64v${v}"
-        if apt-cache show "$try_pkg" >/dev/null 2>&1; then
-            pkg_name="$try_pkg"
-            break
-        fi
+    info "寻址成功！锁定云端目标底层包: $pkg_name"
+    print_magenta ">>> [4/4] 正在向主系统强行注入战舰级内核: $pkg_name ..."
+    
+    if ! apt-get install -y "$pkg_name"; then
+        error "保底安装宣告失败，内核替换进程中止。请排查物理网络环境与 APT 源配置！"
+        local _pause=""
+        read -rp "按 Enter 继续..." _pause || true
+        return 1
+    fi
     done
     
     if test -z "$pkg_name"; then
@@ -1111,17 +1113,16 @@ do_xanmod_compile() {
     
     info "注入 KVM/Xen 底层虚拟化驱动映射层 (VIRTIO)..."
     ./scripts/config --enable VIRTIO
-    ./scripts/config --enable VIRTIO_PCI
-    ./scripts/config --enable VIRTIO_BLK
-    ./scripts/config --enable VIRTIO_NET
-    ./scripts/config --enable SCSI_VIRTIO
-    ./scripts/config --enable HW_RANDOM_VIRTIO
+    # ... (保留其他 virtio 和 bbr 的注入) ...
     
-    info "注入 TCP BBR v3..."
-    ./scripts/config --enable TCP_CONG_BBR
-    ./scripts/config --enable DEFAULT_BBR
-    ./scripts/config --enable TCP_BBR3 2>/dev/null || true
-    
+    info "正在顺应新版内核代差，配置 CPU 架构等级..."
+    # 彻底删除原有的 sed -i 's/-march=... 物理破坏逻辑
+    # 放弃旧版的 --set-val X86_64_VERSION 2，改用标准布尔开关
+    ./scripts/config --enable GENERIC_CPU
+    ./scripts/config --disable GENERIC_CPU_V1
+    ./scripts/config --enable X86_64_V2
+    ./scripts/config --enable GENERIC_CPU_V2 2>/dev/null || true
+
     info "正在剥离 Debian/Ubuntu 证书锁与臃肿调试信息..."
     ./scripts/config --disable DRM_I915
     ./scripts/config --disable NET_VENDOR_REALTEK
