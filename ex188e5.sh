@@ -982,10 +982,6 @@ do_install_xanmod_main_official() {
 # [ 0x08: 编译安装原生 Linux 主线内核 + BBR3 (全量 VIRTIO 防砖版) ]
 # ------------------------------------------------------------------------------
 
-# ------------------------------------------------------------------------------
-# [ 0x08: 编译安装原生 Linux 主线内核 + BBR3 (全量 VIRTIO 防砖版) ]
-# ------------------------------------------------------------------------------
-
 do_xanmod_compile() {
     title "系统飞升：编译安装 主线内核 + BBR3 (极客锻造模式)"
     
@@ -1099,7 +1095,6 @@ do_xanmod_compile() {
     info "执行 XZ 极致解压，释放内核源码..."
     tar -xJf "$KERNEL_FILE"
     
-    # 原生 Bash 字符串截断获取目录，抛弃危险管道
     local KERNEL_DIR
     KERNEL_DIR="${KERNEL_FILE%.tar.xz}"
     
@@ -1112,53 +1107,48 @@ do_xanmod_compile() {
     if test -f "/boot/config-$(uname -r)"; then
         cp "/boot/config-$(uname -r)" .config
         info "已成功提取当前内核配置作为蓝本。"
+    elif modprobe configs 2>/dev/null && test -f /proc/config.gz; then
+        zcat /proc/config.gz > .config
+        info "已成功提取内存运行时配置 (/proc/config.gz)。"
     else
-        if modprobe configs 2>/dev/null; then
-            if test -f /proc/config.gz; then
-                zcat /proc/config.gz > .config
-                info "已成功提取内存运行时配置 (/proc/config.gz)。"
-            else
-                make defconfig >/dev/null 2>&1 || true
-            fi
-        else
-            make defconfig >/dev/null 2>&1 || true
-        fi
+        make defconfig >/dev/null 2>&1 || true
     fi
     
-    # [新增护盾] 强行用回车键塞住它要问的所有问题！
-    info "正在抹平新老内核代差，自动执行静默确认..."
+    info "正在抹平新老内核代差，执行首次静默对齐..."
     yes "" | make olddefconfig >/dev/null 2>&1 || true
     
     make scripts >/dev/null 2>&1 || true
     
-    # 注入 BBR3
-    ./scripts/config --enable CONFIG_TCP_CONG_BBR
-    ./scripts/config --enable CONFIG_DEFAULT_BBR
-    ./scripts/config --enable CONFIG_TCP_BBR3 2>/dev/null || true
+    info "注入 KVM/Xen 底层虚拟化驱动映射层 (VIRTIO)..."
+    ./scripts/config --enable VIRTIO
+    ./scripts/config --enable VIRTIO_PCI
+    ./scripts/config --enable VIRTIO_BLK
+    ./scripts/config --enable VIRTIO_NET
+    ./scripts/config --enable SCSI_VIRTIO
+    ./scripts/config --enable HW_RANDOM_VIRTIO
     
-    # 【核心保命操作】：强行注入 VIRTIO 虚拟化驱动，防止 VPS 重启无法识别硬盘变砖！
-    info "正在固化 KVM/Xen 底层虚拟化驱动映射层 (CONFIG_VIRTIO)..."
-    ./scripts/config --enable CONFIG_VIRTIO
-    ./scripts/config --enable CONFIG_VIRTIO_PCI
-    ./scripts/config --enable CONFIG_VIRTIO_BLK
-    ./scripts/config --enable CONFIG_VIRTIO_NET
-    ./scripts/config --enable CONFIG_SCSI_VIRTIO
-    ./scripts/config --enable CONFIG_HW_RANDOM_VIRTIO
-# 剔除臃肿驱动与阻碍编译的签名校验
-    ./scripts/config --disable CONFIG_DRM_I915
-    ./scripts/config --disable CONFIG_NET_VENDOR_REALTEK
-    ./scripts/config --disable CONFIG_NET_VENDOR_BROADCOM
+    info "注入 TCP BBR v3..."
+    ./scripts/config --enable TCP_CONG_BBR
+    ./scripts/config --enable DEFAULT_BBR
+    ./scripts/config --enable TCP_BBR3 2>/dev/null || true
     
-    # [核心修复] 暴力粉碎 Debian/Ubuntu 祖传的内核模块私钥签名依赖！
-    sed -i 's/CONFIG_SYSTEM_TRUSTED_KEYS=.*/CONFIG_SYSTEM_TRUSTED_KEYS=""/g' .config
-    sed -i 's/CONFIG_SYSTEM_REVOCATION_KEYS=.*/CONFIG_SYSTEM_REVOCATION_KEYS=""/g' .config
-    sed -i 's/CONFIG_MODULE_SIG_KEY=.*/CONFIG_MODULE_SIG_KEY=""/g' .config
+    info "正在剥离 Debian/Ubuntu 证书锁与臃肿调试信息..."
+    ./scripts/config --disable DRM_I915
+    ./scripts/config --disable NET_VENDOR_REALTEK
+    ./scripts/config --disable NET_VENDOR_BROADCOM
     
-    # 补齐 CONFIG_ 前缀，彻底关闭导致爆内存的 BTF 调试信息
-    ./scripts/config --disable CONFIG_DEBUG_INFO_BTF
-    ./scripts/config --disable CONFIG_DEBUG_INFO
-    ./scripts/config --disable CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
+    # 【核心手术】彻底关闭模块签名，彻底清空密钥字符串，免疫 pem 报错！
+    ./scripts/config --disable MODULE_SIG
+    ./scripts/config --disable MODULE_SIG_ALL
+    ./scripts/config --set-str SYSTEM_TRUSTED_KEYS ""
+    ./scripts/config --set-str SYSTEM_REVOCATION_KEYS ""
     
+    # 彻底关闭调试信息，防止内存爆掉
+    ./scripts/config --disable DEBUG_INFO
+    ./scripts/config --disable DEBUG_INFO_BTF
+    ./scripts/config --disable DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
+    
+    info "重新对齐最终无污染配置..."
     yes "" | make olddefconfig >/dev/null 2>&1 || true
 
     title "=== [6/8] 释放 CPU 算力，开启内核原生 Forge 锻造模式 ==="
@@ -1173,23 +1163,19 @@ do_xanmod_compile() {
 
     title "=== [7/8] 校验引导区容量并挂载核心模块 ==="
     
-    # 【生死巡航】：强制校验 /boot 剩余空间是否大于 200MB
     local boot_free
     boot_free=$(df -m /boot 2>/dev/null | awk 'NR==2 {print $4}' || echo "0")
     
-    # 如果 /boot 不是独立分区，它会读取到 / 的容量，这没问题。
     if test "$boot_free" -lt 200 2>/dev/null; then
         error "致命拦截：/boot 引导扇区剩余空间 ($boot_free MB) 严重不足！"
-        error "强行执行 make install 必定导致内核文件残缺、系统彻底变砖！"
-        error "编译已主动熔断，请清理无用旧内核后再尝试！"
+        error "强行执行 make install 必定导致系统彻底变砖！编译主动熔断！"
         local _p=""
         read -rp "按 Enter 返回主菜单..." _p || true
         return 1
     fi
     
-    info "/boot 扇区空间充足 ($boot_free MB)，准许物理模块映射与启动扇区安装..."
+    info "/boot 扇区空间充足 ($boot_free MB)，准许启动扇区安装..."
     
-    # 彻底摘除静默容错 `|| true`，一旦安装报错立刻切断脚本
     make modules_install
     make install
 
@@ -1200,10 +1186,8 @@ do_xanmod_compile() {
         print_magenta ">>> 为新内核 $NEW_KERNEL_VER 强制生成底层 Initramfs 镜像驱动..."
         if command -v update-initramfs >/dev/null 2>&1; then
             update-initramfs -c -k "$NEW_KERNEL_VER" || true
-        else
-            if command -v dracut >/dev/null 2>&1; then
-                dracut --force "/boot/initramfs-${NEW_KERNEL_VER}.img" "$NEW_KERNEL_VER" || true
-            fi
+        elif command -v dracut >/dev/null 2>&1; then
+            dracut --force "/boot/initramfs-${NEW_KERNEL_VER}.img" "$NEW_KERNEL_VER" || true
         fi
     fi
 
@@ -1211,14 +1195,10 @@ do_xanmod_compile() {
     
     if command -v update-grub >/dev/null 2>&1; then
         update-grub || true
-    else
-        if command -v update-grub2 >/dev/null 2>&1; then
-            update-grub2 || true
-        else
-            if command -v grub-mkconfig >/dev/null 2>&1; then
-                grub-mkconfig -o /boot/grub/grub.cfg || true
-            fi
-        fi
+    elif command -v update-grub2 >/dev/null 2>&1; then
+        update-grub2 || true
+    elif command -v grub-mkconfig >/dev/null 2>&1; then
+        grub-mkconfig -o /boot/grub/grub.cfg || true
     fi
 
     cd /
