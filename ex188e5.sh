@@ -2809,6 +2809,117 @@ do_status_menu() {
         esac
     done
 }
+# ==============================================================================
+# [ 0x13.5: Reality 回落黑洞限速探针 ]
+# ==============================================================================
+
+do_fallback_probe() {
+    clear
+    echo -e "\n${yellow}=== Xray Reality 回落陷阱深渊 (Fallback Limit) 扫描探针 ===${none}"
+    
+    if test ! -f "$CONFIG"; then
+        error "无法对当前环境实施 JQ 底层结构体解析操作，配置文件缺失。"
+        local _p=""; read -rp "按 Enter 返回..." _p || true
+        return
+    fi
+    
+    local out
+    out=$(jq -r '
+      .inbounds[]? | select(.protocol=="vless" and .streamSettings.security=="reality") | .streamSettings.realitySettings | 
+      "  [上传方向 (Upload)]\n    设局诱饵字节数 (afterBytes) : \(.limitFallbackUpload.afterBytes // "未开启 (门禁大开)")\n    启动基准绞杀器 (bytesPerSec) : \(.limitFallbackUpload.bytesPerSec // "未开启 (门禁大开)")\n  [下载方向 (Download)]\n    设局诱饵字节数 (afterBytes) : \(.limitFallbackDownload.afterBytes // "未开启 (门禁大开)")\n    启动基准绞杀器 (bytesPerSec) : \(.limitFallbackDownload.bytesPerSec // "未开启 (门禁大开)")"
+    ' "$CONFIG" 2>/dev/null || echo "")
+    
+    if test -n "$out"; then
+        echo -e "$out"
+    else
+        echo -e "  ${red}严重错误：未能发现有效的 Reality 协议配置防线！${none}"
+    fi
+    
+    echo ""
+    local _p=""
+    read -rp "扫描完毕，按 Enter 回到系统主轴..." _p || true
+}
+
+# ==============================================================================
+# [ 0x13.6: 系统建仓初始化与环境更新子菜单 ]
+# ==============================================================================
+
+do_sys_init_menu() {
+    while true; do
+        clear
+        title "系统初始化与底层组件重构序列"
+        echo "  1) [大满贯] 一键强制更新底层、校准时区、部署 1GB 永久 Swap 与清理守护"
+        echo "  2) [网络侧] 修改系统内核级 DNS 流向 (基于 resolvconf 强效物理死锁)"
+        echo -e "  ${cyan}3) [架构层] 抢先安装官方预编译版本 XANMOD 稳定内核 (平民推荐版)${none}"
+        echo "  4) [超极客] 源码暴力提取 Kernel 主线内核 + BBR3 物理硬塞 (裸装防爆版)"
+        echo "  5) [缓冲区] 网卡发送队列精细控制 (TX Queue 2000 极低延迟限制)"
+        echo "  6) [内存流] 全系统网络栈底层极度特化配置 (tcp_adv_win_scale/tcp_app_win)"
+        echo "  7) [上帝级] 全域系统结构树与 28 项核心微操调配控制台 (CAKE/RPS/零拷贝)"
+        echo -e "  ${cyan}8) [精细化] 强配 CAKE 发送缓冲管理与 Overhead 报文拆解补偿${none}"
+        echo "  0) 退出子程序"
+        hr
+        
+        local sys_opt=""
+        read -rp "长官，请给出下一步操作选项: " sys_opt || true
+        
+        case "${sys_opt:-}" in
+            1) 
+                print_magenta ">>> 开始接管并拉取全系统最新镜像源..."
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update -y >/dev/null 2>&1 || true
+                apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" full-upgrade -y >/dev/null 2>&1 || true
+                apt-get autoremove -y --purge >/dev/null 2>&1 || true
+                
+                apt-get install -y wget curl sudo socat ntpdate e2fsprogs pkg-config iproute2 ethtool >/dev/null 2>&1 || true
+                
+                print_magenta ">>> 执行时区强行矫正..."
+                if command -v timedatectl >/dev/null 2>&1; then
+                    timedatectl set-timezone Asia/Kuala_Lumpur >/dev/null 2>&1 || true
+                fi
+                if command -v ntpdate >/dev/null 2>&1; then
+                    ntpdate -u us.pool.ntp.org >/dev/null 2>&1 || true
+                fi
+                if command -v hwclock >/dev/null 2>&1; then
+                    hwclock --systohc >/dev/null 2>&1 || true
+                fi
+                info "时间轴同步完毕，现已锚定 Asia/Kuala_Lumpur 时区！"
+                
+                check_and_create_1gb_swap
+                
+                print_magenta ">>> 将 cc1.sh 洁癖清理守护程序埋入系统阴暗面..."
+                cat <<'EOF' > /usr/local/bin/cc1.sh
+#!/bin/bash
+export DEBIAN_FRONTEND=noninteractive
+apt-get clean >/dev/null 2>&1 || true
+apt-get autoremove -y --purge >/dev/null 2>&1 || true
+journalctl --vacuum-time=3d >/dev/null 2>&1 || true
+rm -rf /tmp/* 2>/dev/null || true
+rm -rf /var/log/*/*.log 2>/dev/null || true
+sync
+EOF
+                chmod +x /usr/local/bin/cc1.sh 2>/dev/null || true
+                
+                local temp_cron
+                temp_cron=$(mktemp)
+                crontab -l 2>/dev/null | grep -v "cc1.sh" > "$temp_cron" || true
+                echo "0 4 */10 * * /usr/local/bin/cc1.sh >/dev/null 2>&1" >> "$temp_cron"
+                crontab "$temp_cron" 2>/dev/null || true
+                rm -f "$temp_cron" 2>/dev/null || true
+                
+                info "极致清理组件配置成功，将在每 10 天执行深度内存大回旋清理！"
+                local _p=""; read -rp "按 Enter 继续推进..." _p || true 
+                ;;
+            2) do_change_dns ;;
+            3) do_install_xanmod_main_official ;;
+            4) do_xanmod_compile ;;
+            5) do_txqueuelen_opt ;;
+            6) do_perf_tuning ;;
+            7) do_app_level_tuning_menu ;;
+            8) config_cake_advanced ;;
+            0) return ;;
+        esac
+    done
+}
 # ------------------------------------------------------------------------------
 # [ 0x14: Xray 核心通讯底层升维系统 (海外原生直连极速版) ]
 # ------------------------------------------------------------------------------
