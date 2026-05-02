@@ -856,7 +856,7 @@ check_and_create_1gb_swap() {
 }
 
 # ------------------------------------------------------------------------------
-# [ 0x07: 官方预编译 XANMOD 部署模块 - 容错智能降级与 APT 寻址引擎 ]
+# [ 0x07: 官方预编译 XANMOD 部署模块 - 全新官方源与智能降级引擎 ]
 # ------------------------------------------------------------------------------
 
 do_install_xanmod_main_official() {
@@ -902,17 +902,18 @@ do_install_xanmod_main_official() {
         info "评估完成，当前 CPU 硬件完美支持的微架构最高级别为: v${cpu_level}"
     fi
 
-    print_magenta ">>> [2/4] 正在配置 Xanmod 官方全新 APT 仓库与防伪 GPG 密钥..."
+    print_magenta ">>> [2/4] 正在配置 Xanmod 官方全新 APT 仓库与防伪 Keyring..."
     
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y >/dev/null 2>&1 || true
-    apt-get install -y gnupg gnupg2 curl sudo wget e2fsprogs ca-certificates >/dev/null 2>&1 || true
+    apt-get install -y gnupg gnupg2 curl sudo wget e2fsprogs ca-certificates lsb-release >/dev/null 2>&1 || true
 
-    # 【核心修复: 采用最新官方 Keyring 规范，彻底解决找不到包的问题】
-    mkdir -p /usr/share/keyrings 2>/dev/null || true
-    rm -f /etc/apt/trusted.gpg.d/xanmod-kernel.gpg /etc/apt/sources.list.d/xanmod-kernel.list 2>/dev/null || true
+    # 【核心修复 1：彻底清理旧版源残留，部署 2025 最新官方 Keyring 规范】
+    rm -f /etc/apt/trusted.gpg.d/xanmod-kernel.gpg 2>/dev/null || true
+    rm -f /etc/apt/sources.list.d/xanmod-kernel.list 2>/dev/null || true
     
-    if ! wget -qO - https://dl.xanmod.org/archive.key | gpg --dearmor --yes -o /usr/share/keyrings/xanmod-archive-keyring.gpg 2>/dev/null; then
+    mkdir -p /usr/share/keyrings 2>/dev/null || true
+    if ! wget -qO - https://dl.xanmod.org/archive.key | gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg --yes 2>/dev/null; then
         error "从远端导入 GPG 密钥链发生错误，官方源可能受限！"
         return 1
     fi
@@ -983,7 +984,7 @@ do_install_xanmod_main_official() {
 }
 
 # ------------------------------------------------------------------------------
-# [ 0x08: 编译安装原生 XANMOD 源码内核 + BBR3 (全量 VIRTIO 防砖版) ]
+# [ 0x08: 编译安装原生 XANMOD 源码内核 + BBR3 (全量防爆防砖版) ]
 # ------------------------------------------------------------------------------
 
 do_xanmod_compile() {
@@ -1036,7 +1037,7 @@ do_xanmod_compile() {
         info "工作区默认路由至: /usr/src"
     fi
 
-    # 【终极修复：增加 liblz4-tool 彻底解决 lz4c not found 报错！】
+    # 【核心修复 2：加入 liblz4-tool lz4 防解压打包断层】
     apt-get update -y >/dev/null 2>&1 || true
     apt-get install -y build-essential bc bison flex libssl-dev libelf-dev libncurses-dev zstd lz4 liblz4-tool lzma bzip2 git wget curl xz-utils ethtool numactl make pkg-config dwarves rsync python3 libdw-dev cpio >/dev/null 2>&1 || true
 
@@ -1063,7 +1064,6 @@ do_xanmod_compile() {
     info "正在连接 GitLab 获取 Xanmod 最新分支..."
     local XANMOD_TAG=""
     set +e
-    # 动态抓取 Xanmod 官方 GitLab 的最新 release tag
     XANMOD_TAG=$(curl -sL "https://gitlab.com/api/v4/projects/xanmod%2Flinux/repository/tags" 2>/dev/null | jq -r '.[0].name' | grep -v "rc" | head -n 1 || echo "")
     set -e
     
@@ -1095,12 +1095,11 @@ do_xanmod_compile() {
     tar -xzf "$KERNEL_FILE"
     
     local KERNEL_DIR="linux-${XANMOD_TAG}"
-    
     if ! cd "$KERNEL_DIR"; then
         die "无法切入解压后的源码目录: $KERNEL_DIR。"
     fi
 
-    title "=== [5/8] 注入 VPS 保命驱动 (VIRTIO) 与防爆参数 ==="
+    title "=== [5/8] 注入底层驱动与绝缘防爆参数 ==="
     
     if test -f "/boot/config-$(uname -r)"; then
         cp "/boot/config-$(uname -r)" .config
@@ -1114,8 +1113,16 @@ do_xanmod_compile() {
     
     info "正在抹平新老内核代差，执行首次静默对齐..."
     yes "" | make olddefconfig >/dev/null 2>&1 || true
-    
     make scripts >/dev/null 2>&1 || true
+    
+    # 【核心修复 3：彻底拔除导致 gcc 报错的 Xanmod 架构参数 bug】
+    # 强制将 CONFIG_X86_64_VERSION 设为 1，防止 Makefile 拼接出不合法的 -march=x86-64-v
+    sed -i 's/CONFIG_X86_64_VERSION=.*/CONFIG_X86_64_VERSION=1/g' .config 2>/dev/null || true
+    if ! grep -q "CONFIG_X86_64_VERSION" .config; then
+        echo "CONFIG_X86_64_VERSION=1" >> .config
+    fi
+    ./scripts/config --enable X86_64_V1
+    ./scripts/config --set-val X86_64_VERSION 1
     
     info "注入 KVM/Xen 底层虚拟化驱动映射层 (VIRTIO)..."
     ./scripts/config --enable VIRTIO
