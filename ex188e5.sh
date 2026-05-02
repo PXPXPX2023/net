@@ -902,18 +902,22 @@ do_install_xanmod_main_official() {
         info "评估完成，当前 CPU 硬件完美支持的微架构最高级别为: v${cpu_level}"
     fi
 
-    print_magenta ">>> [2/4] 正在配置 Xanmod 官方最高优 APT 仓库与防伪 GPG 密钥..."
+    print_magenta ">>> [2/4] 正在配置 Xanmod 官方全新 APT 仓库与防伪 GPG 密钥..."
     
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y >/dev/null 2>&1 || true
-    apt-get install -y gnupg gnupg2 curl sudo wget e2fsprogs >/dev/null 2>&1 || true
+    apt-get install -y gnupg gnupg2 curl sudo wget e2fsprogs ca-certificates >/dev/null 2>&1 || true
 
-    echo 'deb http://deb.xanmod.org releases main' > /etc/apt/sources.list.d/xanmod-kernel.list
+    # 【核心修复: 采用最新官方 Keyring 规范，彻底解决找不到包的问题】
+    mkdir -p /usr/share/keyrings 2>/dev/null || true
+    rm -f /etc/apt/trusted.gpg.d/xanmod-kernel.gpg /etc/apt/sources.list.d/xanmod-kernel.list 2>/dev/null || true
     
-    if ! wget -qO - https://dl.xanmod.org/gpg.key | gpg --dearmor --yes -o /etc/apt/trusted.gpg.d/xanmod-kernel.gpg 2>/dev/null; then
+    if ! wget -qO - https://dl.xanmod.org/archive.key | gpg --dearmor --yes -o /usr/share/keyrings/xanmod-archive-keyring.gpg 2>/dev/null; then
         error "从远端导入 GPG 密钥链发生错误，官方源可能受限！"
         return 1
     fi
+    
+    echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' > /etc/apt/sources.list.d/xanmod-release.list
 
     print_magenta ">>> [3/4] 正在触发 APT 智能降级寻址阵列..."
     
