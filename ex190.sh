@@ -34,6 +34,7 @@ readonly yellow='\033[33m'
 readonly gray='\033[90m'
 readonly green='\033[92m'
 readonly blue='\033[94m'
+readonly magenta='\033[95m'
 readonly cyan='\033[96m'
 readonly none='\033[0m'
 
