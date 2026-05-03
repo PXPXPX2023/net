@@ -909,10 +909,8 @@ _compile_kernel_mainline() {
         ./scripts/config --enable CONFIG_TCP_BBR3 2>/dev/null || true
     fi
     
-    ./scripts/config --disable CONFIG_DRM_I915 2>/dev/null || true
-    ./scripts/config --disable CONFIG_NET_VENDOR_REALTEK 2>/dev/null || true
-    ./scripts/config --disable CONFIG_NET_VENDOR_BROADCOM 2>/dev/null || true
-    ./scripts/config --disable CONFIG_E100 2>/dev/null || true
+
+
     
     make olddefconfig >/dev/null 2>&1 || true
     _execute_compilation ""
