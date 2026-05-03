@@ -974,11 +974,11 @@ _compile_kernel_xanmod() {
     local LATEST_TAG=$(curl -sL --connect-timeout 10 https://gitlab.com/api/v4/projects/xanmod%2Flinux/repository/tags | jq -r '.[].name' 2>/dev/null | grep -E "^6\.12\.[0-9]+-xanmod[0-9]+$" | head -n 1 || echo "")
     if test -z "$LATEST_TAG" || test "$LATEST_TAG" = "null"; then 
         warn "动态获取 GitLab Xanmod 6.12 Tag 失败，触发容灾固化版本！"
-        LATEST_TAG="6.12.25-xanmod1"
+        LATEST_TAG="6.18.25-rt-xanmod1"
     fi
     set -e
-    
-    local KERNEL_URL="https://gitlab.com/xanmod/linux/-/archive/${LATEST_TAG}/linux-${LATEST_TAG}.tar.gz"
+
+    local KERNEL_URL="https://gitlab.com/xanmod/linux/-/archive/6.18.25-rt-xanmod1/linux-6.18.25-rt-xanmod1.tar.gz"
     local KERNEL_FILE="${LATEST_TAG}.tar.gz"
     info "正在拉取真·Xanmod 源码包: $KERNEL_FILE"
     wget -q --show-progress "$KERNEL_URL" -O "$KERNEL_FILE"
