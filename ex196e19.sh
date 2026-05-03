@@ -739,8 +739,8 @@ do_kernel_compile_menu() {
         echo -e "  ${cyan}1) [稳如老狗] 编译 Linux 官方主线最新内核 (Mainline + BBR) ${none}"
         echo "     - 源码直连 kernel.org，100% 原生纯净，编译零报错"
         echo ""
-        echo -e "  ${magenta}2) [激进压榨] 编译 Xanmod 官方极客内核 (Xanmod 6.12 + BBR3) ${none}"
-        echo "     - 源码直连 GitLab，已锁定 6.12 稳定分支，彻底规避 7.x 编译翻车 Bug"
+        echo -e "  ${magenta}2) [激进压榨] 编译 Xanmod 官方极客内核 (Xanmod 6.18.25-rt-xanmod1 + BBR3) ${none}"
+        echo "     - 源码直连 GitLab，已锁定 6.18.25-rt-xanmod1 稳定分支，彻底规避 7.x 编译翻车 Bug"
         echo "     - 内置强开 x86_64-v1 底层兜底防爆指令，兼容全部服务器"
         echo ""
         echo -e "  ${yellow}3) [折中平衡] 编译 Linux 官方主线最新内核 (Mainline + BBR3) ${none}"
@@ -963,17 +963,17 @@ _compile_kernel_mainline() {
 }
 
 _compile_kernel_xanmod() {
-    title "系统飞升：编译 真·Xanmod 极客内核 (锁定 6.12 稳定版避雷)"
+    title "系统飞升：编译 真·Xanmod 极客内核 (锁定 6.18.25-rt-xanmod1 稳定版避雷)"
     warn "警告: 此过程将极度消耗 CPU 与内存 (约 30-60 分钟)，低配机极易死机！"
     local confirm=""; read -rp "确定要开始极客源码编译吗？(y/n): " confirm || true
     if [[ ! "$confirm" =~ ^[yY]$ ]]; then return; fi
     _prepare_compile_env
 
-    info "=== 动态连接 GitLab 溯源真正的 Xanmod 6.12 官方源码 ==="
+    info "=== 动态连接 GitLab 溯源真正的 Xanmod 6.18.25-rt-xanmod1 官方源码 ==="
     set +e
     local LATEST_TAG=$(curl -sL --connect-timeout 10 https://gitlab.com/api/v4/projects/xanmod%2Flinux/repository/tags | jq -r '.[].name' 2>/dev/null | grep -E "^6\.12\.[0-9]+-xanmod[0-9]+$" | head -n 1 || echo "")
     if test -z "$LATEST_TAG" || test "$LATEST_TAG" = "null"; then 
-        warn "动态获取 GitLab Xanmod 6.12 Tag 失败，触发容灾固化版本！"
+        warn "动态获取 GitLab Xanmod 6.18.25-rt-xanmod1 Tag 失败，触发容灾固化版本！"
         LATEST_TAG="6.18.25-rt-xanmod1"
     fi
     set -e
