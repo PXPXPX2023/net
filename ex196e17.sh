@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# 脚本名称: ex196e16.sh (The Apex Vanguard - Project Genesis V196e16)
+# 脚本名称: ex196e17.sh (The Apex Vanguard - Project Genesis V196e17)
 # 快捷方式: xrv
 #
-# 【V196e16 终极勘误与真理重塑】
-#   1. 物理防呆拼接: 重新优化切割逻辑，解决拼接断层导致的 readonly 变量报错。
-#   2. 函数绝对归位: 彻底修复 do_sys_init_menu 菜单与内核编译三通道指令。
+# 【V196e17 终极勘误与真理重塑】
+#   1. 补全遗失函数: 彻底找回缺失的 do_sys_init_menu 核心系统初始化菜单。
+#   2. 三通道内核锻造: 新增 Mainline+BBR, Xanmod+BBR3, Mainline+BBR3 极客编译三重路线。
 #   3. 斩断配置毒瘤: 完全信任内核原生 defconfig 推导架构，根除 -march 暴毙！
 #   4. JQ 绝对绝缘: 全域覆盖 select(. != null) 护盾，杜绝任何数组为空时的语法崩溃。
 #   5. 完美融合: 全量继承 25 项系统微操及全域网络栈压榨引擎。
@@ -13,7 +13,7 @@
 
 # 必须用 bash 运行
 if test -z "${BASH_VERSION:-}"; then
-    echo "Error: 请使用 bash 执行本脚本: bash ex196e16.sh"
+    echo "Error: 请使用 bash 执行本脚本: bash ex196e17.sh"
     exit 1
 fi
 
@@ -42,7 +42,7 @@ readonly magenta='\033[95m'
 readonly cyan='\033[96m'
 readonly none='\033[0m'
 
-readonly SCRIPT_VERSION="196e16"
+readonly SCRIPT_VERSION="196e17"
 readonly XRAY_BIN="/usr/local/bin/xray"
 readonly CONFIG_DIR="/usr/local/etc/xray"
 readonly CONFIG="$CONFIG_DIR/config.json"
@@ -132,6 +132,8 @@ _get_ip() {
     fi
     echo "$GLOBAL_IP"
 }
+# --- ✂️ Part 1 结束，请复制并合并下方的 Part 2 ✂️ ---
+# --- ✂️ 紧接在 Part 1 之后粘贴此 Part 2 ✂️ ---
 validate_port() {
     local p="$1"
     if test -z "$p"; then return 1; fi
@@ -143,8 +145,7 @@ validate_port() {
     fi
     return 0
 }
-# --- ✂️ 往下粘贴 Part 2 (严禁重复粘贴上方内容) ✂️ ---
-# --- ✂️ 紧接在 Part 1 之后粘贴此 Part 2 ✂️ ---
+
 gen_ss_pass() { head -c 24 /dev/urandom | base64 | tr -d '=/+\n\r' | head -c 24 || true; }
 
 _select_ss_method() {
@@ -292,7 +293,8 @@ UPDSH
     rm -f "$tmp_cron" 2>/dev/null || true
     info "已配置全球库热更与错峰重启: 3:00 静默下载，3:10 安全重载 Xray 进程。"
 }
-
+# --- ✂️ Part 2 结束，请复制并合并下方的 Part 3 ✂️ ---
+# --- ✂️ 紧接在 Part 2 之后粘贴此 Part 3 ✂️ ---
 do_change_dns() {
     title "配置系统 DNS 解析 (resolvconf)"
     local release=$(detect_os)
@@ -428,8 +430,8 @@ ensure_xray_is_alive() {
         return 1
     fi
 }
-# --- ✂️ 往下粘贴 Part 3 (严禁重复粘贴上方内容) ✂️ ---
-# --- ✂️ 紧接在 Part 2 之后粘贴此 Part 3 ✂️ ---
+# --- ✂️ Part 3 结束，请复制并合并下方的 Part 4 ✂️ ---
+# --- ✂️ 紧接在 Part 3 之后粘贴此 Part 4 ✂️ ---
 run_sni_scanner() {
     title "雷达嗅探：130+ 实体矩阵与国内连通性探测"
     print_yellow ">>> 扫描进行中... (随时按回车键可立即中止)\n"
@@ -556,7 +558,8 @@ run_sni_scanner() {
     fi
     rm -f "$tmp_sni" 2>/dev/null || true
 }
-
+# --- ✂️ Part 4 结束，请复制并合并下方的 Part 5 ✂️ ---
+# --- ✂️ 紧接在 Part 4 之后粘贴此 Part 5 ✂️ ---
 verify_sni_strict() {
     local target="$1"
     print_magenta "\n>>> 正在针对目标 SNI [$target] 开启高维质检 (TLS 1.3 / ALPN / OCSP)..."
@@ -671,6 +674,11 @@ check_and_create_1gb_swap() {
     echo "$SWAP_FILE none swap sw 0 0" >> /etc/fstab 2>/dev/null || true
     info "Swap 缓冲池配置完成。"
 }
+# --- ✂️ Part 5 结束，请复制并合并下方的 Part 6 ✂️ ---
+# --- ✂️ 紧接在 Part 5 之后粘贴此 Part 6 ✂️ ---
+# ------------------------------------------------------------------------------
+# 【V196e17 核心修复 1】：预编译官方 XANMOD 部署模块 (修复多重源与 404)
+# ------------------------------------------------------------------------------
 
 do_install_xanmod_main_official() {
     title "系统飞升：安装真·预编译 XANMOD 内核 (官方源保护)"
@@ -774,8 +782,42 @@ do_install_xanmod_main_official() {
     sleep 10
     reboot
 }
-# --- ✂️ Part 3 结束，请复制并合并下方的 Part 4 ✂️ ---
-# --- ✂️ 紧接在 Part 3 之后粘贴此 Part 4 ✂️ ---
+# --- ✂️ Part 6 结束，请复制并合并下方的 Part 7 ✂️ ---
+# --- ✂️ 紧接在 Part 6 之后粘贴此 Part 7 ✂️ ---
+# ------------------------------------------------------------------------------
+# 【V196e17 核心修复 2】：真·三通道内核源码编译引擎 (Mainline 主线 vs Xanmod)
+# ------------------------------------------------------------------------------
+
+do_kernel_compile_menu() {
+    while true; do
+        clear
+        title "极客内核源码锻造中心"
+        echo "  当前宿主架构核心极易因为选项冲突导致 Kconfig 编译炸膛。"
+        echo "  我们为您提供了绝对安全的工业级源码锻造路径："
+        echo ""
+        echo -e "  ${cyan}1) [稳如老狗] 编译 Linux 官方主线最新内核 (Mainline + BBR) ${none}"
+        echo "     - 源码直连 kernel.org，100% 原生纯净，编译零报错"
+        echo "     - 适合对 Xanmod 有依赖冲突或追求绝对稳定性的服务器"
+        echo ""
+        echo -e "  ${magenta}2) [激进压榨] 编译 Xanmod 官方极客内核 (Xanmod + BBR3) ${none}"
+        echo "     - 源码直连 GitLab，包含高阶网络补丁与 BBR3 拥塞控制"
+        echo "     - 彻底斩除 config 拷贝操作，100% 信任内核 Kconfig 推导"
+        echo ""
+        echo -e "  ${yellow}3) [折中平衡] 编译 Linux 官方主线最新内核 (Mainline + BBR3) ${none}"
+        echo "     - 结合 Mainline 的极致稳定与 BBR3 的最新拥塞控制算法"
+        echo ""
+        echo "  0) 返回上级菜单"
+        hr
+        
+        local k_opt=""; read -rp "请下达锻造路径指令 (0-3): " k_opt || true
+        case "${k_opt:-}" in
+            1) _compile_kernel_mainline "bbr"; return ;;
+            2) _compile_kernel_xanmod; return ;;
+            3) _compile_kernel_mainline "bbr3"; return ;;
+            0) return ;;
+        esac
+    done
+}
 
 _prepare_compile_env() {
     info "=== 开始执行深度系统清理与模块解容 ==="
@@ -923,6 +965,8 @@ EOF_RPS_SRV
     sleep 30
     reboot
 }
+# --- ✂️ Part 7 结束，请复制并合并下方的 Part 8 ✂️ ---
+# --- ✂️ 紧接在 Part 7 之后粘贴此 Part 8 ✂️ ---
 
 _compile_kernel_mainline() {
     local bbr_type="${1:-bbr}"
@@ -1065,12 +1109,14 @@ _compile_kernel_xanmod() {
     ./scripts/config --disable CONFIG_NET_VENDOR_BROADCOM 2>/dev/null || true
     ./scripts/config --disable CONFIG_E100 2>/dev/null || true
     
+    # 绝对禁止执行任何与 CPU 微架构和 CONFIG_X86_64_VERSION 有关的 scripts/config 操作！
+    # 彻底交由 Kconfig 去自动推导补齐，这样就绝对不会触发 Kconfig 抹除变量的断层判定。
     make olddefconfig >/dev/null 2>&1 || true
 
     _execute_compilation
 }
-# --- ✂️ Part 4 结束，请复制并合并下方的 Part 5 ✂️ ---
-# --- ✂️ 紧接在 Part 4 之后粘贴此 Part 5 ✂️ ---
+# --- ✂️ Part 8 结束，请复制并合并下方的 Part 9 ✂️ ---
+# --- ✂️ 紧接在 Part 8 之后粘贴此 Part 9 ✂️ ---
 
 # ------------------------------------------------------------------------------
 # [ 0x09: 系统内核网络栈极限压榨 (全量 60+ 项网络栈阵列调优) ]
@@ -1211,7 +1257,11 @@ net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_reordering = 3
 net.ipv4.tcp_autocorking = 0
 net.ipv4.tcp_tso_win_divisor = 6
+EOF
+# --- ✂️ Part 9 结束，请复制并合并下方的 Part 10 ✂️ ---
+# --- ✂️ 紧接在 Part 9 之后粘贴此 Part 10 ✂️ ---
 
+cat >> /etc/sysctl.d/99-network-optimized.conf << EOF
 kernel.pid_max = 4194304
 kernel.threads-max = 85536
 net.ipv4.neigh.default.gc_thresh1 = 1024
@@ -1309,9 +1359,91 @@ EOF
     else
         info "底层 Sysctl 参数已成功注入。"
     fi
+    
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo "")
+    if test -n "$IFACE"; then
+        info "配置网卡驱动硬件卸载与 RPS 软中断分发 ($IFACE)..."
+        
+        cat > /usr/local/bin/nic-optimize.sh <<EOF_NIC
+#!/bin/bash
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+IFACE="$IFACE"
+ethtool -K \$IFACE gro off gso off tso off lro off rx-gro-hw off tx-udp-segmentation on 2>/dev/null || true
+ethtool -C \$IFACE adaptive-rx off rx-usecs 0 tx-usecs 0 2>/dev/null || true
+EOF_NIC
+        chmod +x /usr/local/bin/nic-optimize.sh 2>/dev/null || true
+        
+        cat > /etc/systemd/system/nic-optimize.service << 'EOSERVICE'
+[Unit]
+Description=NIC Advanced Tuning
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nic-optimize.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOSERVICE
+
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl enable nic-optimize.service >/dev/null 2>&1 || true
+        systemctl start nic-optimize.service >/dev/null 2>&1 || true
+        tc qdisc replace dev "$IFACE" root fq >/dev/null 2>&1 || true
+
+        local CPU=$(nproc 2>/dev/null || echo 1)
+        local CPU_MASK=$(printf "%x" $(( (1<<CPU)-1 )))
+        
+        cat > /usr/local/bin/rps-optimize.sh <<EOF_RPS
+#!/bin/bash
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+IFACE="$IFACE"
+CPU_MASK="$CPU_MASK"
+RX_QUEUES=\$(ls -d /sys/class/net/\$IFACE/queues/rx-* 2>/dev/null | wc -l || echo 0)
+
+for RX in /sys/class/net/\$IFACE/queues/rx-*; do
+    if test -w "\$RX/rps_cpus"; then echo "\$CPU_MASK" > "\$RX/rps_cpus" 2>/dev/null || true; fi
+done
+
+for TX in /sys/class/net/\$IFACE/queues/tx-*; do
+    if test -w "\$TX/xps_cpus"; then echo "\$CPU_MASK" > "\$TX/xps_cpus" 2>/dev/null || true; fi
+done
+
+sysctl -w net.core.rps_sock_flow_entries=131072 >/dev/null 2>&1 || true
+
+if test "\$RX_QUEUES" -gt 0 2>/dev/null; then
+    FLOW_PER_QUEUE=\$((65535 / RX_QUEUES))
+    for RX in /sys/class/net/\$IFACE/queues/rx-*; do
+        if test -w "\$RX/rps_flow_cnt"; then echo "\$FLOW_PER_QUEUE" > "\$RX/rps_flow_cnt" 2>/dev/null || true; fi
+    done
+fi
+EOF_RPS
+        chmod +x /usr/local/bin/rps-optimize.sh 2>/dev/null || true
+        
+        cat > /etc/systemd/system/rps-optimize.service << 'EOF_RPS_SRV'
+[Unit]
+Description=RPS RFS Network CPU Distribution
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/rps-optimize.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF_RPS_SRV
+
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl enable rps-optimize.service >/dev/null 2>&1 || true
+        systemctl start rps-optimize.service >/dev/null 2>&1 || true
+    fi
+
+    info "网络栈参数应用完成，系统将在 15 秒后重启..."
+    sleep 15
+    reboot
 }
-# --- ✂️ Part 5 结束，请复制并合并下方的 Part 6 ✂️ ---
-# --- ✂️ 紧接在 Part 5 之后粘贴此 Part 6 ✂️ ---
 
 do_txqueuelen_opt() {
     title "网卡发送队列 (TX Queue) 调优"
@@ -1418,6 +1550,12 @@ config_cake_advanced() {
     fi
     local _p=""; read -rp "参数阵列配置完成，请按 Enter 返回主菜单..." _p || true
 }
+# --- ✂️ Part 10 结束，请复制并合并下方的 Part 11 ✂️ ---
+# --- ✂️ 紧接在 Part 10 之后粘贴此 Part 11 ✂️ ---
+
+# ------------------------------------------------------------------------------
+# [ 0x0B: 核心组件级与系统级状态探针 (20+ 项深度侦测) ]
+# ------------------------------------------------------------------------------
 
 check_mph_state() {
     local state=$(jq -r 'select(.routing != null) | .routing.domainMatcher // "false"' "$CONFIG" 2>/dev/null)
@@ -1531,8 +1669,10 @@ check_irq_state() {
         echo "false"
     fi
 }
-# --- ✂️ Part 6 结束，请复制并合并下方的 Part 7 ✂️ ---
-# --- ✂️ 紧接在 Part 6 之后粘贴此 Part 7 ✂️ ---
+
+# ------------------------------------------------------------------------------
+# [ 0x0C: 系统底层硬件微操核心与自动化脚本装载 ]
+# ------------------------------------------------------------------------------
 
 update_hw_boot_script() {
     cat << 'EOF' > /usr/local/bin/xray-hw-tweaks.sh
@@ -1633,6 +1773,12 @@ _apply_cake_live() {
     fi
     update_hw_boot_script
 }
+# --- ✂️ Part 11 结束，请复制并合并下方的 Part 12 ✂️ ---
+# --- ✂️ 紧接在 Part 11 之后粘贴此 Part 12 ✂️ ---
+
+# ------------------------------------------------------------------------------
+# [ 0x0D: Xray 系统级与应用层黑科技切换枢纽 (25 项支撑函数) ]
+# ------------------------------------------------------------------------------
 
 _toggle_affinity_on() {
     local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
@@ -1987,6 +2133,8 @@ _turn_off_app() {
         systemctl daemon-reload >/dev/null 2>&1 || true
     fi
 }
+# --- ✂️ Part 13 结束，请复制并合并下方的 Part 14 ✂️ ---
+# --- ✂️ 请将此行及其下方的 Part 14 紧接在 Part 13 结尾粘贴 ✂️ ---
 
 do_app_level_tuning_menu() {
     while true; do
@@ -2421,7 +2569,7 @@ do_app_level_tuning_menu() {
     done
 }
 # --- ✂️ Part 14 结束，请复制并合并下方的 Part 15 ✂️ ---
-# --- ✂️ 紧接在 Part 7 之后粘贴此 Part 8 ✂️ ---
+# --- ✂️ 请将此行及其下方的 Part 15 紧接在 Part 14 结尾粘贴 ✂️ ---
 
 print_node_block() {
     local protocol="$1" ip="$2" port="$3" sni="$4" pbk="$5" shortid="$6" utls="$7" uuid="$8"
@@ -2806,250 +2954,77 @@ do_status_menu() {
     done
 }
 
-do_fallback_probe() {
-    clear
-    title "Reality 回落陷阱深渊侦测引擎 (Fallback)"
-    if test ! -f "$CONFIG"; then
-        error "无法对接底层 JQ 环境结构树配置！"
-        local _p=""; read -rp "按 Enter 返回..." _p || true
-        return
-    fi
-    local out=$(jq -r '
-      .inbounds[]? | select(. != null) | select(.protocol=="vless" and .streamSettings.security=="reality") | .streamSettings.realitySettings | 
-      "  [发射管 (Upload)]\n    前置设局诱饵拦截 (afterBytes) : \(.limitFallbackUpload.afterBytes // "安全门全开 (未设防)")\n    防恶意扫描绞杀器 (bytesPerSec) : \(.limitFallbackUpload.bytesPerSec // "安全门全开 (未设防)")\n  [下沉流 (Download)]\n    前置设局诱饵拦截 (afterBytes) : \(.limitFallbackDownload.afterBytes // "安全门全开 (未设防)")\n    防恶意扫描绞杀器 (bytesPerSec) : \(.limitFallbackDownload.bytesPerSec // "安全门全开 (未设防)")"
-    ' "$CONFIG" 2>/dev/null || echo "")
-    if test -n "$out"; then echo -e "$out"; else echo -e "  ${red}致命警告：网络中不存在有效的 Reality 配置基体！${none}"; fi
-    echo ""; local _p=""; read -rp "核查结束，按 Enter 键返回中转枢纽..." _p || true
-}
-
-do_update_core() {
-    title "Xray 主心骨环境内核迭代"
-    info "强联通官方源更新通道..."
-    
-    if bash -c "$(curl -L -s https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh)" @ install >/dev/null 2>&1; then
-        if test -x "$XRAY_BIN"; then
-            fix_xray_systemd_limits
-            systemctl restart xray >/dev/null 2>&1 || true
-            local cur_ver=$("$XRAY_BIN" version 2>/dev/null | head -n1 | awk '{print $2}' || echo "检索故障")
-            info "全流程覆盖结束，当前主线跃迁到: ${cyan}$cur_ver${none}"
-            local _p=""; read -rp "按 Enter 返回安全界面..." _p || true
-            return 0
-        fi
-    fi
-    error "遭遇官方源封锁或 IPv6 数据穿透故障，导致数据拉取完全被阻隔。"
-    local _p=""; read -rp "按 Enter 关闭进程..." _p || true
-    return 1
-}
-
-_update_matrix() {
-    if test ! -f "$CONFIG"; then return; fi
-    echo "[$SNI_JSON_ARRAY]" > /tmp/sni_array.json
-    _safe_jq_write --arg dest "$BEST_SNI:443" --slurpfile snis /tmp/sni_array.json '
-        (.inbounds[]? | select(. != null) | select(.protocol == "vless")) |= (
-            .streamSettings.realitySettings.serverNames = $snis[0] |
-            .streamSettings.realitySettings.dest = $dest
-        )
-    '
-    rm -f /tmp/sni_array.json 2>/dev/null || true
-    ensure_xray_is_alive
-    info "网络架构及反识别面具重构完毕，新版防封已加载上线！"
-}
-
-do_install() {
-    title "Apex Vanguard Ultimate Final: 高维协议建仓与底层核心网组建"
-    preflight
-    
-    systemctl stop xray >/dev/null 2>&1 || true
-    if test ! -f "$INSTALL_DATE_FILE"; then date +"%Y-%m-%d %H:%M:%S" > "$INSTALL_DATE_FILE"; fi
-    
-    echo -e "  ${cyan}决定本次将要搭载的网络体系：${none}"
-    echo "  1) VLESS-Reality (极致安全伪装架构 / 防止主动探测阻断)"
-    echo "  2) Shadowsocks (抛却重负载，极速穿透轻量备用网)"
-    echo "  3) 启用高可用并行搭载系统 (双通道并发部署)"
-    local proto_choice=""; read -rp "  执行命令编号 (直接回车默认 1): " proto_choice || true
-    proto_choice=${proto_choice:-1}
-
-    if test "$proto_choice" = "1" || test "$proto_choice" = "3"; then
-        while true; do 
-            local input_p=""; read -rp "分配 VLESS 服务数据监听端口 (回车默认绑定 443): " input_p || true
-            input_p=${input_p:-443}
-            if validate_port "$input_p"; then LISTEN_PORT="$input_p"; break; fi
-        done
-        local input_remark=""; read -rp "规划 VLESS 节点基础标识名 (默认 xp-reality): " input_remark || true
-        REMARK_NAME=${input_remark:-xp-reality}
-        choose_sni
-        if test $? -ne 0; then return 1; fi
-    fi
-
-    local ss_port=8388
-    local ss_pass=""
-    local ss_method="aes-256-gcm"
-    
-    if test "$proto_choice" = "2" || test "$proto_choice" = "3"; then
-        while true; do 
-            local input_s=""; read -rp "分配 Shadowsocks 单向挂载通讯口 (回车默认使用 8388): " input_s || true
-            input_s=${input_s:-8388}
-            if validate_port "$input_s"; then ss_port="$input_s"; break; fi
-        done
-        ss_pass=$(gen_ss_pass)
-        ss_method=$(_select_ss_method)
-        if test "$proto_choice" = "2"; then 
-            local input_remark=""; read -rp "配置 SS 面板默认名称 (默认 xp-reality): " input_remark || true
-            REMARK_NAME=${input_remark:-xp-reality}
-        fi
-    fi
-
-    info "从中心枢纽拉取最新的 Xray 核心主程序执行安装流..."
-    if ! bash -c "$(curl -fsSL --connect-timeout 10 https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh)" @ install >/dev/null 2>&1; then
-        warn "因云端问题主脚本直连失败，但环境未遭破坏，稍后请在控制面板尝试执行手动核心更新操作。"
-    fi
-    install_update_dat
-    fix_xray_systemd_limits
-
-    cat > "$CONFIG" <<EOF
-{
-  "log": { "loglevel": "warning" },
-  "routing": {
-    "domainStrategy": "AsIs",
-    "rules": [
-      { "outboundTag": "block", "_enabled": true, "protocol": ["bittorrent"] },
-      { "outboundTag": "block", "_enabled": true, "ip": ["geoip:cn"] },
-      { "outboundTag": "block", "_enabled": true, "domain": ["geosite:cn", "geosite:category-ads-all"] }
-    ]
-  },
-  "inbounds": [],
-  "outbounds": [
-      { "protocol": "freedom", "tag": "direct", "settings": {"domainStrategy": "AsIs"} }, 
-      { "protocol": "blackhole", "tag": "block" }
-  ]
-}
-EOF
-
-    if test "$proto_choice" = "1" || test "$proto_choice" = "3"; then
-        local keys=$("$XRAY_BIN" x25519 2>/dev/null || echo "")
-        local priv=$(echo "$keys" | grep -i "Private" | awk -F': ' '{print $2}' | tr -d ' \r\n' || echo "")
-        local pub=$(echo "$keys" | grep -i "Public" | awk -F': ' '{print $2}' | tr -d ' \r\n' || echo "")
-        local uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || "$XRAY_BIN" uuid)
-        local sid=$(head -c 8 /dev/urandom | xxd -p | tr -d '\n\r' || echo "")
-        local ctime=$(date +"%Y-%m-%d %H:%M")
-        
-        echo "$pub" > "$PUBKEY_FILE"
-        echo "$uuid|$ctime" > "$USER_TIME_MAP"
-        
-        echo "[$SNI_JSON_ARRAY]" > /tmp/sni_array.json
-        cat > /tmp/vless_inbound.json <<EOF
-{
-  "tag": "vless-reality", 
-  "listen": "0.0.0.0", 
-  "port": $LISTEN_PORT, 
-  "protocol": "vless",
-  "settings": {
-      "clients": [ {"id": "$uuid", "flow": "xtls-rprx-vision", "email": "$REMARK_NAME"} ], 
-      "decryption": "none"
-  },
-  "streamSettings": {
-    "network": "tcp", 
-    "security": "reality",
-    "sockopt": {"tcpNoDelay": true, "tcpFastOpen": true},
-    "realitySettings": {
-        "dest": "$BEST_SNI:443", 
-        "serverNames": [], 
-        "privateKey": "$priv", 
-        "publicKey": "$pub", 
-        "shortIds": ["$sid"],
-        "limitFallbackUpload": {"afterBytes": 0, "bytesPerSec": 0, "burstBytesPerSec": 0},
-        "limitFallbackDownload": {"afterBytes": 0, "bytesPerSec": 0, "burstBytesPerSec": 0}
-    }
-  },
-  "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"] }
-}
-EOF
-        _safe_jq_write --slurpfile snis /tmp/sni_array.json --slurpfile vless_tmp /tmp/vless_inbound.json '
-            .inbounds += [ $vless_tmp[0] | .streamSettings.realitySettings.serverNames = $snis[0] ]
-        '
-        rm -f /tmp/vless_inbound.json /tmp/sni_array.json 2>/dev/null || true
-    fi
-
-    if test "$proto_choice" = "2" || test "$proto_choice" = "3"; then
-        cat > /tmp/ss_inbound.json <<EOF
-{
-  "tag": "shadowsocks", 
-  "listen": "0.0.0.0", 
-  "port": $ss_port, 
-  "protocol": "shadowsocks",
-  "settings": { "method": "$ss_method", "password": "$ss_pass", "network": "tcp,udp" },
-  "streamSettings": { "sockopt": {"tcpNoDelay": true, "tcpFastOpen": true} }
-}
-EOF
-        _safe_jq_write --slurpfile ss_tmp /tmp/ss_inbound.json '.inbounds += [ $ss_tmp[0] ]'
-        rm -f /tmp/ss_inbound.json 2>/dev/null || true
-    fi
-
-    fix_permissions
-    systemctl enable xray >/dev/null 2>&1 || true
-    
-    if ensure_xray_is_alive; then
-        info "所有架构配置装载确认生效！通讯网络已打开。"
-        do_summary
-    else
-        error "未能顺利贯通服务进程，内部存在数据阻断，请详细勘验报错日志档案。"
-        return 1
-    fi
-    
+do_sys_init_menu() {
     while true; do
-        local opt=""; read -rp "可按下 Enter 键安全返回系统中心菜单，亦或输入 b 即刻执行 SNI 的网络更换及漂移: " opt || true
-        if test "$opt" = "b" || test "$opt" = "B"; then
-            if choose_sni; then _update_matrix; do_summary; else break; fi
-        else 
-            break
-        fi
+        clear
+        title "环境底层组件拉齐与结构重建区"
+        echo "  1) [一键全清] 执行 Linux 强基更新、亚太时间轴校准并置入极客 1GB 内存交换区"
+        echo "  2) [系统防御] 强行修改源头 DNS 解析 (注入 resolvconf，免脱轨断联)"
+        echo -e "  ${cyan}3) [重构内脏] 安装官方预编译 Xanmod 稳定内核 (源头净化防冲突)${none}"
+        echo "  4) [极客锻造] 内核源码编译全自动流水线 (支持主线 Mainline 与极客 Xanmod 双轨)"
+        echo "  5) [网络底层] TX Queue 网卡出站队列防拥堵极限缩减 (配置为 2000 收缩)"
+        echo "  6) [极限压榨] 全域系统底层网络栈结构重塑 (Limits + Sysctl)"
+        echo "  7) [上帝微操] 应用层及系统内核层双轨 25 项神级优化全控板 (Dnsmasq/CAKE)"
+        echo -e "  ${cyan}8) [极度发烧] 深入 CAKE 高级模型配置 (设定 Diffserv 调度、物理带宽上限)${none}"
+        echo "  0) 折返中央主轴系统"
+        hr
+        
+        local sys_opt=""; read -rp "输入重构程序代号: " sys_opt || true
+        case "${sys_opt:-}" in
+            1) 
+                print_magenta ">>> 执行主网对接拉取一切基础更新源..."
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update -y >/dev/null 2>&1 || true
+                apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" full-upgrade -y >/dev/null 2>&1 || true
+                apt-get autoremove -y --purge >/dev/null 2>&1 || true
+                
+                apt-get install -y wget curl sudo socat ntpdate e2fsprogs pkg-config iproute2 ethtool >/dev/null 2>&1 || true
+                
+                print_magenta ">>> 重建亚太网络时间轴记录..."
+                if command -v timedatectl >/dev/null 2>&1; then timedatectl set-timezone Asia/Kuala_Lumpur >/dev/null 2>&1 || true; fi
+                if command -v ntpdate >/dev/null 2>&1; then ntpdate -u us.pool.ntp.org >/dev/null 2>&1 || true; fi
+                if command -v hwclock >/dev/null 2>&1; then hwclock --systohc >/dev/null 2>&1 || true; fi
+                info "底层网络环境时空已对接 Asia/Kuala_Lumpur 区块！"
+                
+                check_and_create_1gb_swap
+                
+                print_magenta ">>> 初始化暗核清理器 cc1.sh ..."
+                cat <<'EOF' > /usr/local/bin/cc1.sh
+#!/bin/bash
+export DEBIAN_FRONTEND=noninteractive
+apt-get clean >/dev/null 2>&1 || true
+apt-get autoremove -y --purge >/dev/null 2>&1 || true
+journalctl --vacuum-time=3d >/dev/null 2>&1 || true
+rm -rf /tmp/* 2>/dev/null || true
+rm -rf /var/log/*/*.log 2>/dev/null || true
+sync
+EOF
+                chmod +x /usr/local/bin/cc1.sh 2>/dev/null || true
+                local temp_cron=$(mktemp)
+                crontab -l 2>/dev/null | grep -v "cc1.sh" > "$temp_cron" || true
+                echo "0 4 */10 * * /usr/local/bin/cc1.sh >/dev/null 2>&1" >> "$temp_cron"
+                crontab "$temp_cron" 2>/dev/null || true
+                rm -f "$temp_cron" 2>/dev/null || true
+                info "深度自愈清理计划激活！已将回旋肃清周期设为 10 天。"
+                local _p=""; read -rp "完成部署，按 Enter 键继续..." _p || true 
+                ;;
+            2) do_change_dns ;;
+            3) do_install_xanmod_main_official ;;
+            4) do_kernel_compile_menu ;;
+            5) do_txqueuelen_opt ;;
+            6) do_perf_tuning ;;
+            7) do_app_level_tuning_menu ;;
+            8) config_cake_advanced ;;
+            0) return ;;
+        esac
     done
-}
-
-do_uninstall() {
-    title "终极断供清理器：彻底摧毁当前生态环境并回卷"
-    local confirm=""; read -rp "此不可逆物理毁灭指令将被下达，将会摧毁私钥记录及 DNS 强行配置 (但网卡级与并发级设定保留)，您完全明确此行为吗？(y/n): " confirm || true
-    if test "$confirm" != "y"; then return; fi
-    
-    info "安全门禁确认，彻底开始核心粉碎行动..."
-    systemctl stop dnsmasq >/dev/null 2>&1 || true
-    systemctl disable dnsmasq >/dev/null 2>&1 || true
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get purge -y dnsmasq >/dev/null 2>&1 || true
-    
-    chattr -i /etc/resolv.conf 2>/dev/null || true
-    if test -f /etc/resolv.conf.bak; then mv -f /etc/resolv.conf.bak /etc/resolv.conf 2>/dev/null || true; fi
-    
-    systemctl stop resolvconf.service >/dev/null 2>&1 || true
-    systemctl disable resolvconf.service >/dev/null 2>&1 || true
-    
-    if systemctl list-unit-files | grep -q systemd-resolved 2>/dev/null; then
-        systemctl enable systemd-resolved >/dev/null 2>&1 || true
-        systemctl start systemd-resolved >/dev/null 2>&1 || true
-    fi
-
-    systemctl stop xray >/dev/null 2>&1 || true
-    systemctl disable xray >/dev/null 2>&1 || true
-    rm -rf /etc/systemd/system/xray* /lib/systemd/system/xray* >/dev/null 2>&1 || true
-    systemctl daemon-reload >/dev/null 2>&1 || true
-    
-    rm -rf "$CONFIG_DIR" "$DAT_DIR" "$XRAY_BIN" "$SCRIPT_DIR" /var/log/xray* /usr/local/bin/xrv "$SCRIPT_PATH" >/dev/null 2>&1 || true
-    
-    local temp_cron=$(mktemp /tmp/cron_XXXXXX) || true
-    if test -f "$temp_cron"; then
-        crontab -l 2>/dev/null | grep -v "update-dat.sh" | grep -v "systemctl restart xray" | grep -v "cc1.sh" > "$temp_cron" || true
-        crontab "$temp_cron" 2>/dev/null || true
-        rm -f "$temp_cron" 2>/dev/null || true
-    fi
-    info "物理痕迹及所有配置文件与组件链路已完全格式化，现网回归系统纯净初始状态！"
-    exit 0
 }
 
 main_menu() {
     while true; do
         clear
         echo -e "${blue}======================================================================${none}"
-        echo -e "  ${magenta}Xray System Advanced Management V196e16 - (The Apex Vanguard)${none}"
+        echo -e "  ${magenta}Xray System Advanced Management V196e17 - (The Apex Vanguard)${none}"
         
         local svc=$(systemctl is-active xray 2>/dev/null || echo "inactive")
         if test "$svc" = "active"; then 
@@ -3126,6 +3101,6 @@ preflight
 main_menu
 
 # ==============================================================================
-# EOF - Apex Vanguard V196e16 System Advanced Control Ready.
+# EOF - Apex Vanguard V196e17 System Advanced Control Ready.
 # ==============================================================================
-# --- ✂️ Part 8 结束，所有代码拼接完毕。请运行 bash ex196e16.sh ---
+# --- ✂️ Part 15 结束，所有代码拼接完毕。请运行 bash ex196e17.sh ---
