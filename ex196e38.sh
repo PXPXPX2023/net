@@ -1029,7 +1029,7 @@ _compile_kernel_xanmod() {
     if [[ ! "$confirm" =~ ^[yY]$ ]]; then return; fi
     
     local default_tag="6.12.25-xanmod1"
-    info "您可以手动指定内核的 GitLab Release Tag 以进行精确编译 (例如 6.12.25-xanmod1)。"
+    info "您可以手动指定内核的 GitLab Release Tag 以进行精确编译 (例如 6.18.25-rt-xanmod1、6.12.25-xanmod1)。"
     local user_tag=""; read -rp "请输入所需编译的 Tag 名称 (直接回车默认使用 ${default_tag}): " user_tag || true
     local LATEST_TAG=${user_tag:-$default_tag}
     
