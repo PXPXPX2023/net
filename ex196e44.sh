@@ -967,9 +967,13 @@ _prepare_compile_env() {
 
 _execute_compilation() {
     local extra_make_args="${1:-}"
-    info "=== 开启多核并发编译 (线程数: $THREADS) ==="
+    
+    # 【终极防爆】：无视之前的 CPU 核心数侦测，强行将编译线程锁死为 1
+    THREADS=1
+    
+    info "=== 开启单核极限稳定编译 (强锁线程数: $THREADS，杜绝 OOM 暴毙) ==="
     if ! make -j"$THREADS" $extra_make_args; then
-        error "编译线程彻底崩塌！虽然已启动降维打击，但这通常是由于您的宿主机物理内存过度畸小导致系统拒绝分配空间。"
+        error "单核编译依然崩塌！这说明您的宿主机物理内存 + 1280MB Swap 连单线程的极限极低开销都已无法承受。"
         local _p=""; read -rp "按 Enter 返回主菜单..." _p || true
         return 1
     fi
