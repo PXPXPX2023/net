@@ -1028,7 +1028,7 @@ _compile_kernel_xanmod() {
     local confirm=""; read -rp "确定要开始极客源码编译吗？(y/n): " confirm || true
     if [[ ! "$confirm" =~ ^[yY]$ ]]; then return; fi
     
-    local default_tag="6.12.25-xanmod1"
+    local default_tag="6.18.25-rt-xanmod1"
     info "您可以手动指定内核的 GitLab Release Tag 以进行精确编译 (例如 6.18.25-rt-xanmod1、6.12.25-xanmod1)。"
     local user_tag=""; read -rp "请输入所需编译的 Tag 名称 (直接回车默认使用 ${default_tag}): " user_tag || true
     local LATEST_TAG=${user_tag:-$default_tag}
@@ -1049,7 +1049,7 @@ _compile_kernel_xanmod() {
         warn "指定的版本压缩包拉取或校验失败，触发全网降级检索..."
         rm -f "$KERNEL_FILE" 2>/dev/null || true
         set +e
-        LATEST_TAG=$(curl -sL --connect-timeout 10 https://gitlab.com/api/v4/projects/xanmod%2Flinux/repository/tags | jq -r '.[].name' 2>/dev/null | grep -E "^6\.12\.[0-9]+-xanmod[0-9]+$" | head -n 1 || echo "6.12.25-xanmod1")
+        LATEST_TAG=$(curl -sL --connect-timeout 10 https://gitlab.com/api/v4/projects/xanmod%2Flinux/repository/tags | jq -r '.[].name' 2>/dev/null | grep -E "^6\.18\.[0-9]+(-rt)?-xanmod[0-9]+$" | head -n 1 || echo "6.18.25-rt-xanmod1")
         set -e
         KERNEL_URL="https://gitlab.com/xanmod/linux/-/archive/${LATEST_TAG}/linux-${LATEST_TAG}.tar.gz"
         KERNEL_FILE="${LATEST_TAG}.tar.gz"
