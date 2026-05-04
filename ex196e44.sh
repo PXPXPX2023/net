@@ -3,9 +3,9 @@
 # 脚本名称: ex196e44.sh (The Apex Vanguard - Project Genesis V196e44)
 # 快捷方式: xrv
 #
-# 【V196e44 终极战舰版：函数链重塑、1280M固化、7.x天花板破除】
+# 【V196e44 终极战舰版：函数链重塑、1380M固化、7.x天花板破除】
 #   1. 结构重构: 彻底修复指令 10 的 command not found 函数丢失问题，100% 完整！
-#   2. OOM 免疫: 固化 1280MB Swap，并在低内存(≤2.5G)时强行降维单线程编译防暴毙。
+#   2. OOM 免疫: 固化 1380MB Swap，并在低内存(≤2.5G)时强行降维单线程编译防暴毙。
 #   3. API 跃迁: 解除正则封印，引入 sort -V -r 完美支持 Linux 7.0.x 及以上分支。
 #   4. JQ 绝缘: 100% 覆盖 select(. != null)，满血应用层微操回归。
 # ==============================================================================
@@ -524,17 +524,17 @@ check_and_create_swap() {
     CURRENT_SWAP=$(swapon --show=NAME,KBYTES --noheadings 2>/dev/null | grep "$SWAP_FILE" | awk '{print $2}' || echo "")
     set -e
     
-    if test -n "$CURRENT_SWAP" && test "$CURRENT_SWAP" -ge 1280000 2>/dev/null; then
-        info "系统已配置足量的 Swap 分区 (≥1280MB)。"
+    if test -n "$CURRENT_SWAP" && test "$CURRENT_SWAP" -ge 1380000 2>/dev/null; then
+        info "系统已配置足量的 Swap 分区 (≥1380MB)。"
         return
     fi
     
-    warn "检测到 Swap 缓冲池不足，正在严格执行您的指令，切辟固化 1280MB Swap 缓冲分区..."
+    warn "检测到 Swap 缓冲池不足，正在严格执行您的指令，切辟固化 1380MB Swap 缓冲分区..."
     swapoff -a 2>/dev/null || true
     sed -i '/swapfile/d' /etc/fstab 2>/dev/null || true
     rm -f "$SWAP_FILE" 2>/dev/null || true
     
-    local swap_size=1280
+    local swap_size=1380
     
     if ! fallocate -l ${swap_size}M "$SWAP_FILE" 2>/dev/null; then
         warn "fallocate 创建失败，触发容灾降级，正使用 dd 建立 Swap (可能耗时较长)..."
@@ -545,7 +545,7 @@ check_and_create_swap() {
     mkswap "$SWAP_FILE" >/dev/null 2>&1 || true
     swapon "$SWAP_FILE" >/dev/null 2>&1 || true
     echo "$SWAP_FILE none swap sw 0 0" >> /etc/fstab 2>/dev/null || true
-    info "1280MB 战舰级 Swap 防爆缓冲池组建完成。"
+    info "1380MB 战舰级 Swap 防爆缓冲池组建完成。"
 }
 # --- ✂️ Part 8 结束，请复制并合并下方的 Part 9 ✂️ ---
 # --- ✂️ 紧接在 Part 8 之后粘贴此 Part 9 ✂️ ---
@@ -952,10 +952,10 @@ _prepare_compile_env() {
     local RAM=$(free -m 2>/dev/null | awk '/Mem/{print $2}' || echo 1024)
     THREADS=$CPU
     
-    # 【智能防爆与降维打击】：由于我们强制将 Swap 锁死在了 1280MB，物理内存低于 2.5GB 时，多核并发链接必定 OOM
+    # 【智能防爆与降维打击】：由于我们强制将 Swap 锁死在了 1380MB，物理内存低于 2.5GB 时，多核并发链接必定 OOM
     if test "$RAM" -lt 2500 2>/dev/null; then 
         THREADS=1
-        info "物理内存告急 ($RAM MB)，为防止 1280MB Swap 在链接阶段耗尽引发 OOM，强行降维：锁定单核编译 (THREADS=1)。"
+        info "物理内存告急 ($RAM MB)，为防止 1380MB Swap 在链接阶段耗尽引发 OOM，强行降维：锁定单核编译 (THREADS=1)。"
     elif test "$RAM" -lt 4000 2>/dev/null; then
         if test "$THREADS" -gt 2 2>/dev/null; then THREADS=2; fi
         info "物理内存较少 ($RAM MB)，为防止链接阶段 OOM，限制最高编译线程为 $THREADS。"
@@ -2123,7 +2123,7 @@ do_sys_init_menu() {
     while true; do
         clear
         title "环境底层组件拉齐与结构重建区 (V196e44)"
-        echo "  1) [一键全清] 执行 Linux 强基更新、亚太时间轴校准并置入极客 1280MB 内存交换区"
+        echo "  1) [一键全清] 执行 Linux 强基更新、亚太时间轴校准并置入极客 1380MB 内存交换区"
         echo "  2) [系统防御] 强行修改源头 DNS 解析 (注入 resolvconf，免脱轨断联)"
         echo -e "  ${cyan}3) [重构内脏] 双轨飞升：官方 APT 预编译直装 或 极客全量源码锻造${none}"
         echo "  4) [网络底层] TX Queue 网卡出站队列防拥堵极限缩减 (配置为 12000 收缩)"
