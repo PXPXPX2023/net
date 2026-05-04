@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# 脚本名称: ex196e44.sh (The Apex Vanguard - Project Genesis V196e44)
+# 脚本名称: ex196e45.sh (The Apex Vanguard - Project Genesis V196e45)
 # 快捷方式: xrv
 #
-# 【V196e44 终极战舰版：函数链重塑、1380M固化、7.x天花板破除】
+# 【V196e45 终极战舰版：函数链重塑、1380M固化、7.x天花板破除】
 #   1. 结构重构: 彻底修复指令 10 的 command not found 函数丢失问题，100% 完整！
 #   2. OOM 免疫: 固化 1380MB Swap，并在低内存(≤2.5G)时强行降维单线程编译防暴毙。
 #   3. API 跃迁: 解除正则封印，引入 sort -V -r 完美支持 Linux 7.0.x 及以上分支。
 #   4. JQ 绝缘: 100% 覆盖 select(. != null)，满血应用层微操回归。
 # ==============================================================================
 
-if test -z "${BASH_VERSION:-}"; then echo "Error: 请使用 bash 执行本脚本: bash ex196e44.sh"; exit 1; fi
+if test -z "${BASH_VERSION:-}"; then echo "Error: 请使用 bash 执行本脚本: bash ex196e45.sh"; exit 1; fi
 if test "$EUID" -ne 0; then echo -e "\033[31m[致命错误] 触及底层必须拥有最高权限，请使用 root 账户执行！\033[0m"; exit 1; fi
 
 set -euo pipefail
@@ -26,7 +26,7 @@ readonly magenta='\033[95m'
 readonly cyan='\033[96m'
 readonly none='\033[0m'
 
-readonly SCRIPT_VERSION="196e44"
+readonly SCRIPT_VERSION="196e45"
 readonly XRAY_BIN="/usr/local/bin/xray"
 readonly CONFIG_DIR="/usr/local/etc/xray"
 readonly CONFIG="$CONFIG_DIR/config.json"
@@ -2126,7 +2126,7 @@ do_uninstall() {
 do_sys_init_menu() {
     while true; do
         clear
-        title "环境底层组件拉齐与结构重建区 (V196e44)"
+        title "环境底层组件拉齐与结构重建区 (V196e45)"
         echo "  1) [一键全清] 执行 Linux 强基更新、亚太时间轴校准并置入极客 1380MB 内存交换区"
         echo "  2) [系统防御] 强行修改源头 DNS 解析 (注入 resolvconf，免脱轨断联)"
         echo -e "  ${cyan}3) [重构内脏] 双轨飞升：官方 APT 预编译直装 或 极客全量源码锻造${none}"
@@ -2190,7 +2190,7 @@ main_menu() {
     while true; do
         clear
         echo -e "${blue}======================================================================${none}"
-        echo -e "  ${magenta}Xray System Advanced Management V196e44 - (The Apex Vanguard)${none}"
+        echo -e "  ${magenta}Xray System Advanced Management V196e45 - (The Apex Vanguard)${none}"
         
         local svc=$(systemctl is-active xray 2>/dev/null || echo "inactive")
         if test "$svc" = "active"; then svc="${green}平稳在线 (Running)${none}"; else svc="${red}离线静默 (Stopped)${none}"; fi
@@ -2235,6 +2235,6 @@ preflight
 main_menu
 
 # ==============================================================================
-# EOF - Apex Vanguard V196e44 System Advanced Control Ready.
+# EOF - Apex Vanguard V196e45 System Advanced Control Ready.
 # ==============================================================================
-# --- ✂️ Part 20 结束，所有代码拼接完毕。请运行 bash ex196e44.sh ---
+# --- ✂️ Part 20 结束，所有代码拼接完毕。请运行 bash ex196e45.sh ---
