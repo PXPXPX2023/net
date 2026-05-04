@@ -2191,7 +2191,7 @@ main_menu() {
     while true; do
         clear
         echo -e "${blue}======================================================================${none}"
-        echo -e "  ${magenta}Xray System Advanced Management V196e38 - (The Apex Vanguard)${none}"
+        echo -e "  ${magenta}Xray System Advanced Management V196e39 - (The Apex Vanguard)${none}"
         
         local svc=$(systemctl is-active xray 2>/dev/null || echo "inactive")
         if test "$svc" = "active"; then svc="${green}平稳在线 (Running)${none}"; else svc="${red}离线静默 (Stopped)${none}"; fi
@@ -2236,6 +2236,6 @@ preflight
 main_menu
 
 # ==============================================================================
-# EOF - Apex Vanguard V196e38 System Advanced Control Ready.
+# EOF - Apex Vanguard V196e39 System Advanced Control Ready.
 # ==============================================================================
-# --- ✂️ Part 20 结束，所有代码拼接完毕。请运行 bash ex196e38.sh ---
+# --- ✂️ Part 20 结束，所有代码拼接完毕。请运行 bash ex196e39.sh ---
