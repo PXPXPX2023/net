@@ -653,19 +653,19 @@ check_and_create_swap() {
     CURRENT_SWAP=$(swapon --show=NAME,KBYTES --noheadings 2>/dev/null | grep "$SWAP_FILE" | awk '{print $2}' || echo "")
     set -e
     
-    if test -n "$CURRENT_SWAP" && test "$CURRENT_SWAP" -ge 3000000 2>/dev/null; then
-        info "系统已配置足量的战舰级 Swap 分区 (≥3GB)，足以抵御内核 LD 并发冲击。"
+    if test -n "$CURRENT_SWAP" && test "$CURRENT_SWAP" -ge 1200000 2>/dev/null; then
+        info "系统已配置足量的战舰级 Swap 分区 (≥1.2GB)，足以抵御内核 LD 并发冲击。"
         return
     fi
     
     warn "检测到 Swap 缓冲池不足！大型内核链接阶段极易触发物理内存溢出 (OOM)..."
-    warn "正在强行切辟 4GB 战舰级 Swap 缓冲分区..."
+    warn "正在强行切辟 1.2GB 战舰级 Swap 缓冲分区..."
     swapoff -a 2>/dev/null || true
     sed -i '/swapfile/d' /etc/fstab 2>/dev/null || true
     rm -f "$SWAP_FILE" 2>/dev/null || true
     
     local root_free=$(df -m / 2>/dev/null | awk 'NR==2{print $4}' || echo "0")
-    local swap_size=4096
+    local swap_size=1280
     if test "$root_free" -lt 6000 2>/dev/null; then swap_size=2048; fi
     if test "$root_free" -lt 3000 2>/dev/null; then swap_size=1024; fi
 
