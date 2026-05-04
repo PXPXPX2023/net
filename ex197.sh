@@ -667,6 +667,24 @@ choose_sni() {
 }
 
 do_install_xanmod_main_official() {
+# CPU等级
+cpu_level=$(detect_x86_64_level)
+
+# 架构优化
+scripts/config --set-str CONFIG_MARCH "x86-64-v${cpu_level}"
+
+# 禁用32位（关键）
+scripts/config --disable CONFIG_X86_X32
+scripts/config --disable CONFIG_IA32_EMULATION
+scripts/config --disable CONFIG_COMPAT
+
+# 关闭 IBT / CF protection
+scripts/config --disable CONFIG_CC_HAS_IBT
+scripts/config --disable CONFIG_X86_KERNEL_IBT
+
+# GCC 兼容
+export KCFLAGS="-fcf-protection=none"
+
     title "系统飞升：安装官方预编译 XANMOD 内核 (APT 双轨融合版)"
     
     if [[ "$(uname -m)" != "x86_64" ]]; then 
@@ -916,6 +934,23 @@ EOF_RPS_SRV
 }
 
 _compile_kernel_mainline() {
+# CPU等级
+cpu_level=$(detect_x86_64_level)
+
+# 架构优化
+scripts/config --set-str CONFIG_MARCH "x86-64-v${cpu_level}"
+
+# 禁用32位（关键）
+scripts/config --disable CONFIG_X86_X32
+scripts/config --disable CONFIG_IA32_EMULATION
+scripts/config --disable CONFIG_COMPAT
+
+# 关闭 IBT / CF protection
+scripts/config --disable CONFIG_CC_HAS_IBT
+scripts/config --disable CONFIG_X86_KERNEL_IBT
+
+# GCC 兼容
+export KCFLAGS="-fcf-protection=none"
     local bbr_type="${1:-bbr}"
     local title_suffix="BBR"
     if [ "$bbr_type" = "bbr3" ]; then title_suffix="BBR3"; fi
@@ -1017,6 +1052,23 @@ _compile_kernel_mainline() {
 }
 
 _compile_kernel_xanmod() {
+# CPU等级
+cpu_level=$(detect_x86_64_level)
+
+# 架构优化
+scripts/config --set-str CONFIG_MARCH "x86-64-v${cpu_level}"
+
+# 禁用32位（关键）
+scripts/config --disable CONFIG_X86_X32
+scripts/config --disable CONFIG_IA32_EMULATION
+scripts/config --disable CONFIG_COMPAT
+
+# 关闭 IBT / CF protection
+scripts/config --disable CONFIG_CC_HAS_IBT
+scripts/config --disable CONFIG_X86_KERNEL_IBT
+
+# GCC 兼容
+export KCFLAGS="-fcf-protection=none"
     title "系统飞升：极客源码编译 真·Xanmod 内核 (全自动防爆防卡死版)"
     warn "警告: 强制单线程(防OOM)编译，将消耗 30-90 分钟，请耐心等待！"
     local confirm=""; read -rp "确定要开始极客源码编译吗？(y/n): " confirm || true
