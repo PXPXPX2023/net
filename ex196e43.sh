@@ -2114,3 +2114,125 @@ do_uninstall() {
     info "物理痕迹及配置文件已完全格式化，现网回归系统纯净初始状态！"; exit 0
 }
 # --- ✂️ Part 17 结束，请复制并合并下方的 Part 18 ✂️ ---
+# --- ✂️ 紧接在 Part 17 之后粘贴此 Part 18 ✂️ ---
+
+# ==============================================================================
+# 【核心枢纽】这里是确保 10 号指令不报 not found 的系统菜单层
+# 注意：这部分必须放在 main_menu 之前定义！
+# ==============================================================================
+
+do_sys_init_menu() {
+    while true; do
+        clear
+        title "环境底层组件拉齐与结构重建区 (V196e43)"
+        echo "  1) [一键全清] 执行 Linux 强基更新、亚太时间轴校准并置入极客 1280MB 内存交换区"
+        echo "  2) [系统防御] 强行修改源头 DNS 解析 (注入 resolvconf，免脱轨断联)"
+        echo -e "  ${cyan}3) [重构内脏] 双轨飞升：官方 APT 预编译直装 或 极客全量源码锻造${none}"
+        echo "  4) [网络底层] TX Queue 网卡出站队列防拥堵极限缩减 (配置为 12000 收缩)"
+        echo "  5) [极限压榨] 全域系统底层网络栈结构重塑 (Limits + Sysctl)"
+        echo "  6) [上帝微操] 应用层及系统内核层双轨 25 项神级优化全控板 (Dnsmasq/CAKE)"
+        echo -e "  ${cyan}7) [极度发烧] 深入 CAKE 高级模型配置 (设定 Diffserv 调度、物理带宽上限)${none}"
+        echo "  0) 折返中央主轴系统"
+        hr
+        
+        local sys_opt=""; read -rp "输入重构程序代号: " sys_opt || true
+        case "${sys_opt:-}" in
+            1) 
+                print_magenta ">>> 执行主网对接拉取一切基础更新源..."
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update -y >/dev/null 2>&1 || true
+                apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" full-upgrade -y >/dev/null 2>&1 || true
+                apt-get autoremove -y --purge >/dev/null 2>&1 || true
+                apt-get install -y wget curl sudo socat ntpdate e2fsprogs pkg-config iproute2 ethtool >/dev/null 2>&1 || true
+                
+                print_magenta ">>> 重建亚太网络时间轴记录..."
+                if command -v timedatectl >/dev/null 2>&1; then timedatectl set-timezone Asia/Kuala_Lumpur >/dev/null 2>&1 || true; fi
+                if command -v ntpdate >/dev/null 2>&1; then ntpdate -u us.pool.ntp.org >/dev/null 2>&1 || true; fi
+                if command -v hwclock >/dev/null 2>&1; then hwclock --systohc >/dev/null 2>&1 || true; fi
+                info "底层网络环境时空已对接 Asia/Kuala_Lumpur 区块！"
+                
+                check_and_create_swap
+                
+                print_magenta ">>> 初始化暗核清理器 cc1.sh ..."
+                cat <<'EOF' > /usr/local/bin/cc1.sh
+#!/bin/bash
+export DEBIAN_FRONTEND=noninteractive
+apt-get clean >/dev/null 2>&1 || true
+apt-get autoremove -y --purge >/dev/null 2>&1 || true
+journalctl --vacuum-time=3d >/dev/null 2>&1 || true
+rm -rf /tmp/* 2>/dev/null || true
+rm -rf /var/log/*/*.log 2>/dev/null || true
+sync
+EOF
+                chmod +x /usr/local/bin/cc1.sh 2>/dev/null || true
+                local temp_cron=$(mktemp)
+                crontab -l 2>/dev/null | grep -v "cc1.sh" > "$temp_cron" || true
+                echo "0 4 */10 * * /usr/local/bin/cc1.sh >/dev/null 2>&1" >> "$temp_cron"
+                crontab "$temp_cron" 2>/dev/null || true
+                rm -f "$temp_cron" 2>/dev/null || true
+                info "深度自愈清理计划激活！已将回旋肃清周期设为 10 天。"
+                local _p=""; read -rp "完成部署，按 Enter 键继续..." _p || true 
+                ;;
+            2) do_change_dns ;;
+            3) do_kernel_compile_menu ;;
+            4) do_txqueuelen_opt ;;
+            5) do_perf_tuning ;;
+            6) do_app_level_tuning_menu ;;
+            7) config_cake_advanced ;;
+            0) return ;;
+        esac
+    done
+}
+
+main_menu() {
+    while true; do
+        clear
+        echo -e "${blue}======================================================================${none}"
+        echo -e "  ${magenta}Xray System Advanced Management V196e43 - (The Apex Vanguard)${none}"
+        
+        local svc=$(systemctl is-active xray 2>/dev/null || echo "inactive")
+        if test "$svc" = "active"; then svc="${green}平稳在线 (Running)${none}"; else svc="${red}离线静默 (Stopped)${none}"; fi
+        local sys_ver=$(uname -r 2>/dev/null || echo "未探测到数据")
+        echo -e "  引擎态势: $svc | 全局快捷指令: ${cyan}xrv${none} | 外部识别 IP: ${yellow}$(_get_ip || echo "探测异常")${none}"
+        echo -e "  系统装配内核: ${cyan}${sys_ver}${none} | 微架构侦测: x64-v${yellow}$(_detect_psabi_level)${none}"
+        echo -e "${blue}======================================================================${none}"
+        echo "  1) 创建/重构 安全底层全加密协议网络连接 (VLESS/SS)"
+        echo "  2) 用户凭证生命周期与独立参数化管理控制"
+        echo "  3) 节点链接与多维信息输出聚合中心"
+        echo "  4) 人工发起数据强联，执行路由解析规则库强制覆盖更新"
+        echo "  5) 在线平滑热更新主程序底层 Core 环境"
+        echo "  6) 修改或全自动剔除被拦截的防封伪装特征矩阵域名"
+        echo "  7) 系统防火墙策略配置 (阻止内网 BT 滥用及第三方广告请求)"
+        echo "  8) Reality Fallback 底层限速沙盒分析器"
+        echo "  9) 全景网络连接审计日志与商用级别网络流量记账本"
+        echo "  10) 高级发烧：内核双轨编译(APT/源码)/网络/应用层 60余项极限全控板"
+        echo "  0) 折叠命令控制台，返回底层终端"
+        echo -e "  ${red}88) 物理不可逆自毁！撤销环境安全防线与系统配置设定${none}"
+        hr
+        
+        local num=""; read -rp "请输入操作代码指令: " num || true
+        case "${num:-}" in
+            1) do_install ;;
+            2) do_user_manager ;;
+            3) do_summary; while true; do local rb=""; read -rp "输出完毕，按 Enter 退出或者按 b 发起特征替换: " rb || true; if test "$rb" = "b" || test "$rb" = "B"; then if choose_sni; then _update_matrix; do_summary; else break; fi; else break; fi; done ;;
+            4) print_magenta ">>> 初始化云网络联通..."; bash "$UPDATE_DAT_SCRIPT" >/dev/null 2>&1 || true; ensure_xray_is_alive; info "配置已穿透替换系统！当前路由库完成热加载！"; local _p=""; read -rp "按 Enter 退回..." _p || true ;;
+            5) do_update_core ;;
+            6) if choose_sni; then _update_matrix; do_summary; while true; do local rb=""; read -rp "任务完毕，按 Enter 返回，或按 b 连续变更: " rb || true; if test "$rb" = "b" || test "$rb" = "B"; then if choose_sni; then _update_matrix; do_summary; else break; fi; else break; fi; done; fi ;;
+            7) _global_block_rules ;;
+            8) do_fallback_probe ;;
+            9) do_status_menu ;;
+            10) do_sys_init_menu ;;
+            88) do_uninstall ;;
+            0) exit 0 ;;
+            *) echo -e "${red}错误拦截：代码解析为空值！${none}"; sleep 1 ;;
+        esac
+    done
+}
+
+preflight
+main_menu
+
+# ==============================================================================
+# EOF - Apex Vanguard V196e43 System Advanced Control Ready.
+# ==============================================================================
+# --- ✂️ Part 18 结束，所有代码拼接完毕。请运行 bash ex196e43.sh ---
