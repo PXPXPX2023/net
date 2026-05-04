@@ -7,7 +7,10 @@ apt install ipset -y
 # ===== 配置 =====
 THRESHOLD=2
 SET_NAME="ssh_blacklist"
-LOGS=$(journalctl -u ssh --since="2 minutes ago" --no-pager 2>/dev/null)
+SINCE_TIME=$(date -d "2 minutes ago" "+%Y-%m-%d %H:%M:%S")
+
+LOGS=$(journalctl -u ssh --since="$SINCE_TIME" --no-pager 2>/dev/null)
+
 
 # ===== 初始化 ipset =====
 ipset create $SET_NAME hash:net -exist
