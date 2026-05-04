@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# 脚本名称: exex196e36.sh (The Apex Vanguard - Project Genesis V196e36)
+# 脚本名称: exex196e39.sh (The Apex Vanguard - Project Genesis V196e39)
 # 快捷方式: xrv
 #
-# 【V196e36 终极融合不朽版：零缩水、破死锁、API动态选库】
+# 【V196e39 终极融合不朽版：零缩水、破死锁、API动态选库】
 #   1. 粉碎编译暴毙: 物理拦截 arch/x86/entry/vdso/Makefile，剔除 x86-64-v3 导致的 32位兼容层编译崩溃。
 #   2. API 动态分支库: 连接 GitLab 实时抓取 Xanmod 最新内核分支供极客自选。
 #   3. 双轨驱动: 兼容官方 APT Xanmod 预编译（极稳）与 GitLab 全源码手工锻造（极致发烧）。
 #   4. 满血复原: 100% 恢复应用层微操全控板、JQ 安全写入护盾与全景雷达网络。
 # ==============================================================================
 
-if test -z "${BASH_VERSION:-}"; then echo "Error: 请使用 bash 执行本脚本: bash exex196e36.sh"; exit 1; fi
+if test -z "${BASH_VERSION:-}"; then echo "Error: 请使用 bash 执行本脚本: bash exex196e39.sh"; exit 1; fi
 if test "$EUID" -ne 0; then echo -e "\033[31m[致命错误] 触及底层必须拥有最高权限，请使用 root 账户执行！\033[0m"; exit 1; fi
 
 set -euo pipefail
@@ -26,7 +26,7 @@ readonly magenta='\033[95m'
 readonly cyan='\033[96m'
 readonly none='\033[0m'
 
-readonly SCRIPT_VERSION="196e36"
+readonly SCRIPT_VERSION="196e39"
 readonly XRAY_BIN="/usr/local/bin/xray"
 readonly CONFIG_DIR="/usr/local/etc/xray"
 readonly CONFIG="$CONFIG_DIR/config.json"
