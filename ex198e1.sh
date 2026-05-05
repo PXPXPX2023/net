@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #==============================================================================
-# 脚本名称: ex197e1.sh (The Apex Vanguard - Project Genesis V197e1)
+# 脚本名称: ex198e1.sh (The Apex Vanguard - Project Genesis V198e1)
 # 快捷方式: xrv
-# 【V197e1 终极版：彻底斩断 vdso32 兼容层、智能转换 x86-64 安全指令集、死锁1380M Swap】
+# 【V198e1 终极版：彻底斩断 vdso32 兼容层、智能转换 x86-64 安全指令集、死锁1380M Swap】
 #==============================================================================
-if test -z "${BASH_VERSION:-}"; then echo "Error: 请使用 bash 执行本脚本: bash ex197e1.sh"; exit 1; fi
+if test -z "${BASH_VERSION:-}"; then echo "Error: 请使用 bash 执行本脚本: bash ex198e1.sh"; exit 1; fi
 if test "$EUID" -ne 0; then echo -e "\033[31m[致命错误] 触及底层必须拥有最高权限，请使用 root 账户执行！\033[0m"; exit 1; fi
 
 set -euo pipefail
@@ -20,7 +20,7 @@ readonly magenta='\033[95m'
 readonly cyan='\033[96m'
 readonly none='\033[0m'
 
-readonly SCRIPT_VERSION="197e1"
+readonly SCRIPT_VERSION="198e1"
 readonly XRAY_BIN="/usr/local/bin/xray"
 readonly CONFIG_DIR="/usr/local/etc/xray"
 readonly CONFIG="$CONFIG_DIR/config.json"
@@ -2238,7 +2238,7 @@ do_uninstall() {
 do_sys_init_menu() {
     while true; do
         clear
-        title "环境底层组件拉齐与结构重建区 (V197e1 最终版)"
+        title "环境底层组件拉齐与结构重建区 (V198e1 最终版)"
         echo "  1) [一键全清] 执行 Linux 强基更新、亚太时间轴校准并置入极客 1380MB 内存交换区"
         echo "  2) [系统防御] 强行修改源头 DNS 解析 (注入 resolvconf，免脱轨断联)"
         echo -e "  ${cyan}3) [重构内脏] 双轨飞升：官方 APT 预编译直装 或 极客全量源码锻造${none}"
@@ -2302,7 +2302,7 @@ main_menu() {
     while true; do
         clear
         echo -e "${blue}======================================================================${none}"
-        echo -e "  ${magenta}Xray System Advanced Management V197e1 - (The Apex Vanguard)${none}"
+        echo -e "  ${magenta}Xray System Advanced Management V198e1 - (The Apex Vanguard)${none}"
         
         local svc=$(systemctl is-active xray 2>/dev/null || echo "inactive")
         if test "$svc" = "active"; then svc="${green}平稳在线 (Running)${none}"; else svc="${red}离线静默 (Stopped)${none}"; fi
@@ -2347,5 +2347,5 @@ preflight
 main_menu
 
 #==============================================================================
-# EOF - Apex Vanguard V197e1 System Advanced Control Ready.
+# EOF - Apex Vanguard V198e1 System Advanced Control Ready.
 #==============================================================================
