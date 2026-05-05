@@ -2,7 +2,7 @@
 #==============================================================================
 # 脚本名称: ex198e7.sh (The Apex Vanguard - Project Genesis V198e7)
 # 快捷方式: xrv
-# 【V198e7 终极版：底层拥塞控制强制焊死 CAKE、保留全部核心护盾防变砖防回滚】
+# 【V198e7 终极版：CAKE模块强装载闭环、极客多核编译、内核驱动强制内建防变砖】
 #==============================================================================
 if test -z "${BASH_VERSION:-}"; then echo "Error: 请使用 bash 执行本脚本: bash ex198e7.sh"; exit 1; fi
 if test "$EUID" -ne 0; then echo -e "\033[31m[致命错误] 触及底层必须拥有最高权限，请使用 root 账户执行！\033[0m"; exit 1; fi
@@ -1002,8 +1002,8 @@ _compile_kernel_mainline() {
         make defconfig >/dev/null 2>&1 || true
     fi
 
-    # [核心修复：解决VPS重启卡busybox，必须强制内建(y)核心驱动，绝不能是模块(m)]
-    info ">>> 强制内建 VPS 核心存储与网络驱动 (防变砖)..."
+    # [核心修复：强制内建核心驱动，防重启卡 busybox 变砖]
+    info ">>> 强制内建 VPS 核心存储与网络驱动..."
     ./scripts/config --enable CONFIG_VIRTIO
     ./scripts/config --enable CONFIG_VIRTIO_PCI
     ./scripts/config --enable CONFIG_VIRTIO_NET
@@ -1012,6 +1012,12 @@ _compile_kernel_mainline() {
     ./scripts/config --enable CONFIG_EXT4_FS
     ./scripts/config --enable CONFIG_NVME_CORE
     ./scripts/config --enable CONFIG_BLK_DEV_NVME
+
+    # [新增护盾：强制内核内建 CAKE / FQ 队列防协议栈瘫痪]
+    info ">>> 强制内建 CAKE 与 FQ 队列控制模块..."
+    ./scripts/config --enable CONFIG_NET_SCH_CAKE
+    ./scripts/config --enable CONFIG_NET_SCH_FQ
+    ./scripts/config --enable CONFIG_NET_SCH_FQ_CODEL
 
     sed -i 's/CONFIG_SYSTEM_TRUSTED_KEYS=.*/CONFIG_SYSTEM_TRUSTED_KEYS=""/g' .config 2>/dev/null || true
     sed -i 's/CONFIG_SYSTEM_REVOCATION_KEYS=.*/CONFIG_SYSTEM_REVOCATION_KEYS=""/g' .config 2>/dev/null || true
@@ -1117,8 +1123,8 @@ _compile_kernel_xanmod() {
         make defconfig >/dev/null 2>&1 || true
     fi
 
-    # [核心修复：解决VPS重启卡busybox，必须强制内建(y)核心驱动，绝不能是模块(m)]
-    info ">>> 强制内建 VPS 核心存储与网络驱动 (防变砖)..."
+    # [核心修复：强制内建核心驱动，防重启卡 busybox 变砖]
+    info ">>> 强制内建 VPS 核心存储与网络驱动..."
     ./scripts/config --enable CONFIG_VIRTIO
     ./scripts/config --enable CONFIG_VIRTIO_PCI
     ./scripts/config --enable CONFIG_VIRTIO_NET
@@ -1127,6 +1133,12 @@ _compile_kernel_xanmod() {
     ./scripts/config --enable CONFIG_EXT4_FS
     ./scripts/config --enable CONFIG_NVME_CORE
     ./scripts/config --enable CONFIG_BLK_DEV_NVME
+
+    # [新增护盾：强制内核内建 CAKE / FQ 队列防协议栈瘫痪]
+    info ">>> 强制内建 CAKE 与 FQ 队列控制模块..."
+    ./scripts/config --enable CONFIG_NET_SCH_CAKE
+    ./scripts/config --enable CONFIG_NET_SCH_FQ
+    ./scripts/config --enable CONFIG_NET_SCH_FQ_CODEL
 
     sed -i 's/CONFIG_SYSTEM_TRUSTED_KEYS=.*/CONFIG_SYSTEM_TRUSTED_KEYS=""/g' .config 2>/dev/null || true
     sed -i 's/CONFIG_SYSTEM_REVOCATION_KEYS=.*/CONFIG_SYSTEM_REVOCATION_KEYS=""/g' .config 2>/dev/null || true
@@ -1257,8 +1269,10 @@ EOF
     echo "DefaultLimitNOFILE=1000000" >> /etc/systemd/system.conf
     echo "DefaultLimitNPROC=1000000" >> /etc/systemd/system.conf
 
-    # [核心修复：底层的网络队列调度器强制默认替换为 CAKE]
+    # [核心修复：底层的网络队列调度器强制默认替换为 CAKE，并写入开机模块防丢失]
     local target_qdisc="cake"
+    mkdir -p /etc/modules-load.d 2>/dev/null || true
+    echo "sch_cake" > /etc/modules-load.d/cake.conf 2>/dev/null || true
     modprobe sch_cake >/dev/null 2>&1 || true
 
     info "写入内核 Sysctl 协议栈参数..."
@@ -1646,7 +1660,35 @@ toggle_journal() { local conf="/etc/systemd/journald.conf"; if [ "$(check_journa
 toggle_process_priority() { local limit_file="/etc/systemd/system/xray.service.d/limits.conf"; if [ ! -f "$limit_file" ]; then return; fi; if grep -q "^OOMScoreAdjust=-500" "$limit_file" 2>/dev/null; then sed -i '/^OOMScoreAdjust=/d' "$limit_file" 2>/dev/null || true; sed -i '/^IOSchedulingClass=/d' "$limit_file" 2>/dev/null || true; sed -i '/^IOSchedulingPriority=/d' "$limit_file" 2>/dev/null || true; else echo "OOMScoreAdjust=-500" >> "$limit_file"; echo "IOSchedulingClass=realtime" >> "$limit_file"; echo "IOSchedulingPriority=2" >> "$limit_file"; fi; systemctl daemon-reload >/dev/null 2>&1 || true; }
 toggle_buffer() { local limit_file="/etc/systemd/system/xray.service.d/limits.conf"; if [ ! -f "$limit_file" ]; then return; fi; if grep -q "XRAY_RAY_BUFFER_SIZE=64" "$limit_file" 2>/dev/null; then sed -i '/XRAY_RAY_BUFFER_SIZE=/d' "$limit_file" 2>/dev/null || true; else echo "Environment=\"XRAY_RAY_BUFFER_SIZE=64\"" >> "$limit_file"; fi; systemctl daemon-reload >/dev/null 2>&1 || true; }
 toggle_routeonly() { if [ "$(check_routeonly_state)" = "true" ]; then _safe_jq_write '(.inbounds[]? | select(. != null) | select(.protocol=="vless" or .protocol=="shadowsocks") | .sniffing.routeOnly) = false'; else _safe_jq_write '(.inbounds[]? | select(. != null) | select(.protocol=="vless" or .protocol=="shadowsocks") | .sniffing.routeOnly) = true'; fi; }
-toggle_cake_qdisc() { local conf="/etc/sysctl.d/99-network-optimized.conf"; local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo ""); if [ -z "$IFACE" ]; then return; fi; if [ "$(check_cake_state)" = "true" ]; then sed -i 's/^net.core.default_qdisc.*/net.core.default_qdisc = fq/' "$conf" 2>/dev/null || true; sysctl -p "$conf" >/dev/null 2>&1 || true; tc qdisc replace dev "$IFACE" root fq >/dev/null 2>&1 || true; else sed -i 's/^net.core.default_qdisc.*/net.core.default_qdisc = cake/' "$conf" 2>/dev/null || true; sysctl -p "$conf" >/dev/null 2>&1 || true; _apply_cake_live; fi; }
+
+toggle_cake_qdisc() { 
+    local conf="/etc/sysctl.d/99-network-optimized.conf"; 
+    local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo ""); 
+    if [ -z "$IFACE" ]; then return; fi; 
+    
+    if [ "$(check_cake_state)" = "true" ]; then 
+        rm -f /etc/modules-load.d/cake.conf 2>/dev/null || true
+        sed -i 's/^net.core.default_qdisc.*/net.core.default_qdisc = fq/' "$conf" 2>/dev/null || true; 
+        sysctl -w net.core.default_qdisc=fq >/dev/null 2>&1 || true
+        sysctl -p "$conf" >/dev/null 2>&1 || true; 
+        tc qdisc replace dev "$IFACE" root fq >/dev/null 2>&1 || true; 
+    else 
+        # 强制预加载并持久化 CAKE 模块，防止 sysctl 找不到引擎而报错回落
+        mkdir -p /etc/modules-load.d 2>/dev/null || true
+        echo "sch_cake" > /etc/modules-load.d/cake.conf 2>/dev/null || true
+        modprobe sch_cake >/dev/null 2>&1 || true
+        
+        if ! grep -q "net.core.default_qdisc" "$conf" 2>/dev/null; then 
+            echo "net.core.default_qdisc = cake" >> "$conf"
+        else 
+            sed -i 's/^net.core.default_qdisc.*/net.core.default_qdisc = cake/' "$conf" 2>/dev/null || true
+        fi
+        sysctl -w net.core.default_qdisc=cake >/dev/null 2>&1 || true
+        sysctl -p "$conf" >/dev/null 2>&1 || true; 
+        _apply_cake_live; 
+    fi; 
+}
+
 toggle_cake_flag() { local flag="$1"; if [ ! -d "$FLAGS_DIR" ]; then mkdir -p "$FLAGS_DIR"; fi; if [ -f "$FLAGS_DIR/$flag" ]; then rm -f "$FLAGS_DIR/$flag" 2>/dev/null || true; else touch "$FLAGS_DIR/$flag" 2>/dev/null || true; fi; _apply_cake_live; }
 toggle_gso() { local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo ""); if [ -z "$IFACE" ]; then return; fi; if [ "$(check_gso_off_state)" = "true" ]; then ethtool -K "$IFACE" gro on gso on tso on 2>/dev/null || true; else ethtool -K "$IFACE" gro off gso off tso off 2>/dev/null || true; fi; update_hw_boot_script; }
 toggle_irq() { local IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}' || echo ""); if [ -z "$IFACE" ]; then return; fi; if [ "$(check_irq_state)" = "true" ]; then systemctl start irqbalance 2>/dev/null || true; systemctl enable irqbalance 2>/dev/null || true; local CPU=$(nproc 2>/dev/null || echo 1); local MASK=$(printf "%x" $(( (1<<CPU)-1 ))); for irq in $(grep "$IFACE" /proc/interrupts 2>/dev/null | awk '{print $1}' | tr -d ':' || true); do echo "$MASK" > "/proc/irq/$irq/smp_affinity" 2>/dev/null || true; done; else systemctl stop irqbalance 2>/dev/null || true; systemctl disable irqbalance 2>/dev/null || true; for irq in $(grep "$IFACE" /proc/interrupts 2>/dev/null | awk '{print $1}' | tr -d ':' || true); do echo 1 > "/proc/irq/$irq/smp_affinity" 2>/dev/null || true; done; fi; update_hw_boot_script; }
