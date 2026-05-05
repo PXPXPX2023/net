@@ -1,8 +1,8 @@
 #!/bin/bash
 # ===== 阈值配置 =====
-THRESHOLD_15M=3
-THRESHOLD_24H=10
-THRESHOLD_72H=20
+THRESHOLD_15M=1
+THRESHOLD_24H=2
+THRESHOLD_72H=2
 # ===== ipset 名称 =====
 SET_15M="ssh_blacklist_15m"
 SET_24H="ssh_blacklist_24h"
