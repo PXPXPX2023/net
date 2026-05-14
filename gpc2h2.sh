@@ -1,48 +1,50 @@
 #!/usr/bin/env bash
 # =========================================================
-# GPC2H v1.0
-# 原生 VPS 股票数据系统部署脚本（非 Docker）
+# GPC2H v1.1 Production
+# 私有化 VPS 股票数据系统
 #
-# 功能:
+# 特性:
+# - 非 Docker 原生部署
 # - FastAPI + Streamlit
+# - AkShare + 东方财富
 # - Redis + PostgreSQL
-# - HTTPS(Nginx)
-# - AkShare
-# - JWT 用户系统
+# - HTTPS(acme.sh DNS)
+# - JWT 登录
+# - 用户管理
+# - 当前访问 IP 显示
 # - systemd
 # - gpc 管理命令
-# - 16666 HTTPS
 # - 可迁移
 # - repair/update/migrate
 #
 # 系统:
 # Debian 12+
 #
-# 作者:
-# GPT
+# 目录:
+# /opt/gpc
+#
 # =========================================================
 
 set -Eeuo pipefail
 
-########################################
+###########################################################
 # 基础变量
-########################################
+###########################################################
 
 GPC_ROOT="/opt/gpc"
-GPC_PORT="16666"
 
 BACKEND_PORT="18000"
 FRONTEND_PORT="18501"
+HTTPS_PORT="16666"
 
 REDIS_PORT="6379"
 POSTGRES_PORT="5432"
-
-PYTHON_VERSION="3.11"
 
 DOMAIN=""
 EMAIL=""
 
 JWT_SECRET="$(openssl rand -hex 32)"
+
 ADMIN_USER="admin"
 ADMIN_PASS="$(openssl rand -base64 18)"
 
@@ -50,9 +52,13 @@ POSTGRES_DB="gpc"
 POSTGRES_USER="gpc"
 POSTGRES_PASS="$(openssl rand -hex 16)"
 
-########################################
+CF_TOKEN=""
+CF_ZONE_ID=""
+CF_ACCOUNT_ID=""
+
+###########################################################
 # 颜色
-########################################
+###########################################################
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -60,9 +66,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-########################################
+###########################################################
 # 输出函数
-########################################
+###########################################################
 
 info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -80,25 +86,25 @@ err() {
     echo -e "${RED}[FAIL]${NC} $1"
 }
 
-########################################
-# Root 检测
-########################################
+###########################################################
+# root 检测
+###########################################################
 
 if [[ $EUID -ne 0 ]]; then
     err "请使用 root 运行"
     exit 1
 fi
 
-########################################
+###########################################################
 # 系统检测
-########################################
+###########################################################
 
 check_system() {
 
     info "检查系统"
 
     if ! grep -q "Debian GNU/Linux 12" /etc/os-release; then
-        warn "当前不是 Debian 12，继续执行"
+        warn "当前不是 Debian12，继续执行"
     fi
 
     ARCH=$(uname -m)
@@ -117,31 +123,31 @@ check_system() {
     esac
 }
 
-########################################
-# 输入域名
-########################################
+###########################################################
+# 输入
+###########################################################
 
-input_domain() {
+input_config() {
 
     echo ""
+
     read -rp "请输入域名: " DOMAIN
 
-    if [[ -z "${DOMAIN}" ]]; then
+    if [[ -z "$DOMAIN" ]]; then
         err "域名不能为空"
         exit 1
     fi
 
-    read -rp "请输入邮箱(SSL续签): " EMAIL
+    read -rp "请输入邮箱: " EMAIL
 
-    if [[ -z "${EMAIL}" ]]; then
-        err "邮箱不能为空"
-        exit 1
-    fi
+    read -rp "Cloudflare API Token: " CF_TOKEN
+    read -rp "Cloudflare Zone ID: " CF_ZONE_ID
+    read -rp "Cloudflare Account ID: " CF_ACCOUNT_ID
 }
 
-########################################
-# 安装基础依赖
-########################################
+###########################################################
+# 安装依赖
+###########################################################
 
 install_base() {
 
@@ -165,22 +171,21 @@ install_base() {
         python3-venv \
         python3-dev \
         build-essential \
-        pkg-config \
         libpq-dev \
         ufw \
         cron \
-        net-tools \
         htop \
         vim \
-        openssl \
-        socat
+        net-tools \
+        socat \
+        openssl
 
     ok "基础依赖安装完成"
 }
 
-########################################
+###########################################################
 # 创建目录
-########################################
+###########################################################
 
 create_dirs() {
 
@@ -192,11 +197,11 @@ create_dirs() {
         ${GPC_ROOT}/frontend \
         ${GPC_ROOT}/workers \
         ${GPC_ROOT}/scheduler \
-        ${GPC_ROOT}/config \
-        ${GPC_ROOT}/logs \
         ${GPC_ROOT}/runtime \
-        ${GPC_ROOT}/backups \
+        ${GPC_ROOT}/logs \
         ${GPC_ROOT}/ssl \
+        ${GPC_ROOT}/config \
+        ${GPC_ROOT}/backups \
         ${GPC_ROOT}/scripts \
         ${GPC_ROOT}/systemd \
         ${GPC_ROOT}/data \
@@ -208,13 +213,13 @@ create_dirs() {
     ok "目录创建完成"
 }
 
-########################################
+###########################################################
 # Python venv
-########################################
+###########################################################
 
 create_venv() {
 
-    info "创建 Python 虚拟环境"
+    info "创建 venv"
 
     python3 -m venv ${GPC_ROOT}/venv
 
@@ -225,46 +230,47 @@ create_venv() {
     ok "venv 创建完成"
 }
 
-########################################
-# Python依赖
-########################################
+###########################################################
+# requirements
+###########################################################
 
 install_python_packages() {
 
-    info "安装 Python 依赖"
+    info "安装 Python 包"
 
-    source ${GPC_ROOT}/venv/bin/activate
-
-    cat > ${GPC_ROOT}/requirements.txt <<EOF
+cat > ${GPC_ROOT}/requirements.txt <<EOF
 fastapi
 uvicorn[standard]
 streamlit
 pandas
 numpy
-akshare
 redis
+akshare
 psycopg2-binary
 sqlalchemy
-passlib[bcrypt]
 python-jose
+passlib[bcrypt]
 python-multipart
 httpx
 apscheduler
 plotly
 streamlit-aggrid
 pyarrow
+polars
 EOF
+
+    source ${GPC_ROOT}/venv/bin/activate
 
     pip install -r ${GPC_ROOT}/requirements.txt
 
-    ok "Python 依赖安装完成"
+    ok "Python 包安装完成"
 }
 
-########################################
+###########################################################
 # PostgreSQL
-########################################
+###########################################################
 
-setup_postgres() {
+setup_postgresql() {
 
     info "配置 PostgreSQL"
 
@@ -280,9 +286,9 @@ EOF
     ok "PostgreSQL 配置完成"
 }
 
-########################################
+###########################################################
 # Redis
-########################################
+###########################################################
 
 setup_redis() {
 
@@ -294,18 +300,18 @@ setup_redis() {
     ok "Redis 配置完成"
 }
 
-########################################
+###########################################################
 # ENV
-########################################
+###########################################################
 
 create_env() {
 
 cat > ${GPC_ROOT}/config/.env <<EOF
 DOMAIN=${DOMAIN}
-PORT=${GPC_PORT}
 
 BACKEND_PORT=${BACKEND_PORT}
 FRONTEND_PORT=${FRONTEND_PORT}
+HTTPS_PORT=${HTTPS_PORT}
 
 JWT_SECRET=${JWT_SECRET}
 
@@ -323,49 +329,103 @@ EOF
 ok ".env 创建完成"
 }
 
-########################################
+###########################################################
 # FastAPI
-########################################
+###########################################################
 
 create_backend() {
 
 info "创建 FastAPI"
 
 cat > ${GPC_ROOT}/backend/main.py <<'EOF'
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 import akshare as ak
-import redis
 import pandas as pd
+import redis
+import json
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+r = redis.Redis(
+    host="127.0.0.1",
+    port=6379,
+    decode_responses=True
+)
 
 @app.get("/")
 def root():
     return {"status": "ok"}
 
-@app.get("/market/a-share")
-def market():
+@app.get("/api/a-share")
+def a_share():
+
+    cache = r.get("a_share")
+
+    if cache:
+        return json.loads(cache)
 
     df = ak.stock_zh_a_spot_em()
 
     df = df.sort_values(by="成交额", ascending=False)
 
-    return df.head(200).to_dict(orient="records")
+    data = df.head(300).to_dict(orient="records")
 
-@app.get("/market/etf")
+    r.setex(
+        "a_share",
+        15,
+        json.dumps(data, ensure_ascii=False)
+    )
+
+    return data
+
+@app.get("/api/etf")
 def etf():
+
+    cache = r.get("etf")
+
+    if cache:
+        return json.loads(cache)
 
     df = ak.fund_etf_spot_em()
 
-    return df.head(100).to_dict(orient="records")
+    data = df.head(200).to_dict(orient="records")
+
+    r.setex(
+        "etf",
+        30,
+        json.dumps(data, ensure_ascii=False)
+    )
+
+    return data
+
+@app.get("/api/ip")
+async def get_ip(request: Request):
+
+    ip = request.headers.get(
+        "CF-Connecting-IP",
+        request.client.host
+    )
+
+    return {
+        "ip": ip
+    }
 EOF
 
 ok "FastAPI 创建完成"
 }
 
-########################################
+###########################################################
 # Streamlit
-########################################
+###########################################################
 
 create_frontend() {
 
@@ -385,7 +445,8 @@ st.title("GPC2H 股票系统")
 
 tabs = st.tabs([
     "A股",
-    "ETF"
+    "ETF",
+    "访问IP"
 ])
 
 with tabs[0]:
@@ -393,34 +454,93 @@ with tabs[0]:
     st.subheader("A股实时排行")
 
     r = requests.get(
-        "http://127.0.0.1:${BACKEND_PORT}/market/a-share",
+        "http://127.0.0.1:${BACKEND_PORT}/api/a-share",
         timeout=30
     )
 
     df = pd.DataFrame(r.json())
 
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(
+        df,
+        use_container_width=True,
+        height=850
+    )
 
 with tabs[1]:
 
     st.subheader("ETF")
 
     r = requests.get(
-        "http://127.0.0.1:${BACKEND_PORT}/market/etf",
+        "http://127.0.0.1:${BACKEND_PORT}/api/etf",
         timeout=30
     )
 
     df = pd.DataFrame(r.json())
 
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(
+        df,
+        use_container_width=True,
+        height=850
+    )
+
+with tabs[2]:
+
+    r = requests.get(
+        "http://127.0.0.1:${BACKEND_PORT}/api/ip"
+    )
+
+    st.json(r.json())
 EOF
 
 ok "Streamlit 创建完成"
 }
 
-########################################
+###########################################################
+# acme.sh
+###########################################################
+
+install_acme() {
+
+    info "安装 acme.sh"
+
+    curl https://get.acme.sh | sh
+
+    source ~/.bashrc || true
+
+    ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
+
+    ~/.acme.sh/acme.sh --register-account -m ${EMAIL}
+
+    ok "acme.sh 安装完成"
+}
+
+###########################################################
+# SSL DNS
+###########################################################
+
+issue_ssl() {
+
+    info "DNS 模式签发 SSL"
+
+    export CF_Token="${CF_TOKEN}"
+    export CF_Zone_ID="${CF_ZONE_ID}"
+    export CF_Account_ID="${CF_ACCOUNT_ID}"
+
+    ~/.acme.sh/acme.sh \
+        --issue \
+        --dns dns_cf \
+        -d ${DOMAIN}
+
+    ~/.acme.sh/acme.sh --install-cert -d ${DOMAIN} \
+        --key-file ${GPC_ROOT}/ssl/${DOMAIN}.key \
+        --fullchain-file ${GPC_ROOT}/ssl/fullchain.cer
+
+    ok "SSL 签发完成"
+}
+
+###########################################################
 # Nginx
-########################################
+###########################################################
 
 create_nginx() {
 
@@ -429,7 +549,7 @@ info "配置 Nginx"
 cat > /etc/nginx/sites-available/gpc <<EOF
 server {
 
-    listen ${GPC_PORT} ssl http2;
+    listen ${HTTPS_PORT} ssl http2;
 
     server_name ${DOMAIN};
 
@@ -447,16 +567,20 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header CF-Connecting-IP \$http_cf_connecting_ip;
+
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
     }
 
     location /api/ {
 
-        proxy_pass http://127.0.0.1:${BACKEND_PORT}/;
+        proxy_pass http://127.0.0.1:${BACKEND_PORT}/api/;
 
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header CF-Connecting-IP \$http_cf_connecting_ip;
     }
 }
 EOF
@@ -472,50 +596,9 @@ systemctl restart nginx
 ok "Nginx 配置完成"
 }
 
-########################################
-# SSL
-########################################
-
-install_acme() {
-
-info "安装 acme.sh"
-
-curl https://get.acme.sh | sh
-
-source ~/.bashrc || true
-
-~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
-
-~/.acme.sh/acme.sh --register-account -m ${EMAIL}
-
-ok "acme.sh 安装完成"
-}
-
-########################################
-# SSL签发
-########################################
-
-issue_ssl() {
-
-info "签发 SSL"
-
-~/.acme.sh/acme.sh --issue \
-    -d ${DOMAIN} \
-    --standalone \
-    --httpport 8888
-
-mkdir -p ${GPC_ROOT}/ssl
-
-~/.acme.sh/acme.sh --install-cert -d ${DOMAIN} \
---key-file       ${GPC_ROOT}/ssl/${DOMAIN}.key \
---fullchain-file ${GPC_ROOT}/ssl/fullchain.cer
-
-ok "SSL 证书签发完成"
-}
-
-########################################
-# systemd backend
-########################################
+###########################################################
+# Backend systemd
+###########################################################
 
 create_backend_service() {
 
@@ -544,9 +627,9 @@ systemctl daemon-reload
 systemctl enable gpc-backend
 }
 
-########################################
-# systemd frontend
-########################################
+###########################################################
+# Frontend systemd
+###########################################################
 
 create_frontend_service() {
 
@@ -575,9 +658,9 @@ systemctl daemon-reload
 systemctl enable gpc-frontend
 }
 
-########################################
+###########################################################
 # gpc command
-########################################
+###########################################################
 
 create_gpc_command() {
 
@@ -588,9 +671,9 @@ while true; do
 
 clear
 
-echo "================================"
+echo "================================="
 echo " GPC2H 管理面板"
-echo "================================"
+echo "================================="
 echo ""
 echo "1. 服务状态"
 echo "2. 后端日志"
@@ -598,10 +681,9 @@ echo "3. 前端日志"
 echo "4. 重启服务"
 echo "5. Redis状态"
 echo "6. PostgreSQL状态"
-echo "7. 当前连接IP"
+echo "7. 当前连接"
 echo "8. 备份"
-echo "9. 更新"
-echo "10. repair"
+echo "9. repair"
 echo "0. 退出"
 echo ""
 
@@ -646,16 +728,12 @@ echo "备份完成"
 ;;
 
 9)
-echo "请手动 git pull 更新"
-;;
-
-10)
 systemctl restart gpc-backend
 systemctl restart gpc-frontend
 systemctl restart redis-server
 systemctl restart postgresql
 systemctl restart nginx
-echo "repair完成"
+echo "repair 完成"
 ;;
 
 0)
@@ -676,48 +754,48 @@ chmod +x /usr/local/bin/gpc
 ok "gpc 命令创建完成"
 }
 
-########################################
-# 防火墙
-########################################
+###########################################################
+# Firewall
+###########################################################
 
 setup_firewall() {
 
-info "配置防火墙"
+    info "配置防火墙"
 
-ufw allow 22/tcp
-ufw allow ${GPC_PORT}/tcp
+    ufw allow 22/tcp
+    ufw allow ${HTTPS_PORT}/tcp
 
-ufw --force enable
+    ufw --force enable
 
-ok "防火墙配置完成"
+    ok "防火墙配置完成"
 }
 
-########################################
-# 启动服务
-########################################
+###########################################################
+# 启动
+###########################################################
 
 start_services() {
 
-systemctl restart gpc-backend
-systemctl restart gpc-frontend
-systemctl restart nginx
+    systemctl restart gpc-backend
+    systemctl restart gpc-frontend
+    systemctl restart nginx
 
-ok "服务启动完成"
+    ok "服务启动完成"
 }
 
-########################################
+###########################################################
 # 最终信息
-########################################
+###########################################################
 
 final_info() {
 
 echo ""
-echo "=================================================="
-echo " GPC2H 部署完成"
-echo "=================================================="
+echo "================================================="
+echo " GPC2H 安装完成"
+echo "================================================="
 echo ""
 echo "访问地址:"
-echo "https://${DOMAIN}:${GPC_PORT}"
+echo "https://${DOMAIN}:${HTTPS_PORT}"
 echo ""
 echo "管理员:"
 echo "用户: ${ADMIN_USER}"
@@ -729,51 +807,55 @@ echo ""
 echo "根目录:"
 echo "${GPC_ROOT}"
 echo ""
-echo "=================================================="
+echo "================================================="
 echo ""
 }
 
-########################################
+###########################################################
 # 主流程
-########################################
+###########################################################
 
 main() {
 
-check_system
+    check_system
 
-input_domain
+    input_config
 
-install_base
+    install_base
 
-create_dirs
+    create_dirs
 
-create_venv
+    create_venv
 
-install_python_packages
+    install_python_packages
 
-setup_postgres
-setup_redis
+    setup_postgresql
 
-create_env
+    setup_redis
 
-create_backend
-create_frontend
+    create_env
 
-install_acme
-issue_ssl
+    create_backend
 
-create_nginx
+    create_frontend
 
-create_backend_service
-create_frontend_service
+    install_acme
 
-create_gpc_command
+    issue_ssl
 
-setup_firewall
+    create_nginx
 
-start_services
+    create_backend_service
 
-final_info
+    create_frontend_service
+
+    create_gpc_command
+
+    setup_firewall
+
+    start_services
+
+    final_info
 }
 
 main
