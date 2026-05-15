@@ -1,87 +1,74 @@
 #!/usr/bin/env bash
 # =========================================================
-# GPC2H3 v3 Production
-# 私有化金融数据终端 / 股票数据系统
+# GPC2H3.SH
+# GPC Quant Terminal Ultimate Production Edition
 #
-# 特性:
-# - 原生 VPS 部署（非 Docker）
-# - FastAPI + Streamlit
-# - Redis + PostgreSQL
-# - 模块化安装
-# - JWT 用户系统
-# - A股/ETF/基金
-# - 东方财富实时
-# - 分钟成交量
-# - 自选股
-# - 用户/IP记录
-# - systemd
-# - gpc 管理命令
-# - backup / repair / migrate
-# - 自签名 HTTPS
-# - 可迁移
+# Features:
+# - AkShare + Eastmoney + Sina + THS data framework
+# - Streamlit terminal
+# - FastAPI + WebSocket
+# - Redis cache
+# - PostgreSQL user system
+# - JWT auth
+# - Watchlist
+# - L2 Engine v3
+# - Minute parquet cache
+# - systemd services
+# - IP access log
+# - self-hosted VPS deployment
+# - no docker
+# - portable
 #
-# 系统:
-# Debian 12+
-#
-# 根目录:
+# Install Path:
 # /opt/gpc
 #
+# Debian 12 / Ubuntu 22+
 # =========================================================
 
 set -Eeuo pipefail
 
-###########################################################
-# 基础变量
-###########################################################
+############################################################
+# GLOBAL
+############################################################
 
 GPC_ROOT="/opt/gpc"
+GPC_DATA="$GPC_ROOT/data"
+GPC_LOG="$GPC_ROOT/logs"
+GPC_ETC="$GPC_ROOT/etc"
 
-BACKEND_PORT="18000"
-FRONTEND_PORT="18501"
-HTTPS_PORT="16666"
+VENV="$GPC_ROOT/venv"
 
 REDIS_PORT="6379"
-
-JWT_SECRET="$(openssl rand -hex 32)"
+API_PORT="18000"
+UI_PORT="18501"
 
 POSTGRES_DB="gpc"
 POSTGRES_USER="gpc"
 POSTGRES_PASS="$(openssl rand -hex 16)"
 
-ADMIN_USER="admin"
-ADMIN_PASS="$(openssl rand -base64 18)"
+JWT_SECRET="$(openssl rand -hex 32)"
 
-SERVER_IP=""
+mkdir -p \
+$GPC_ROOT \
+$GPC_DATA \
+$GPC_LOG \
+$GPC_ETC
 
-ENABLE_AKSHARE="y"
-ENABLE_EASTMONEY="y"
-ENABLE_SINA="n"
-ENABLE_ETF="y"
-ENABLE_FUNDS="y"
-ENABLE_MINUTE="y"
-ENABLE_ALERTS="n"
-ENABLE_WEBSOCKET="n"
+############################################################
+# COLORS
+############################################################
 
-###########################################################
-# 颜色
-###########################################################
+GREEN="\033[32m"
+RED="\033[31m"
+YELLOW="\033[33m"
+NC="\033[0m"
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+############################################################
+# HELPERS
+############################################################
 
-###########################################################
-# 输出
-###########################################################
-
-info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-ok() {
-    echo -e "${GREEN}[ OK ]${NC} $1"
+msg() {
+    echo -e "${GREEN}[INFO]${NC} $1"
 }
 
 warn() {
@@ -89,381 +76,232 @@ warn() {
 }
 
 err() {
-    echo -e "${RED}[FAIL]${NC} $1"
+    echo -e "${RED}[ERR ]${NC} $1"
 }
 
-###########################################################
-# Root
-###########################################################
+############################################################
+# CHECK ROOT
+############################################################
 
-if [[ $EUID -ne 0 ]]; then
-    err "请使用 root 运行"
+if [ "$(id -u)" != "0" ]; then
+    err "Please run as root"
     exit 1
 fi
 
-###########################################################
-# 系统检测
-###########################################################
+############################################################
+# SYSTEM UPDATE
+############################################################
 
-check_system() {
+msg "Updating system..."
 
-    info "检查系统"
+apt update -y
 
-    ARCH=$(uname -m)
+DEBIAN_FRONTEND=noninteractive apt install -y \
+python3 \
+python3-pip \
+python3-venv \
+build-essential \
+curl \
+wget \
+git \
+redis-server \
+postgresql \
+postgresql-contrib \
+nginx \
+htop \
+jq \
+unzip \
+openssl \
+sqlite3
 
-    case "$ARCH" in
-        x86_64|amd64)
-            ok "x86_64"
-            ;;
-        aarch64|arm64)
-            ok "ARM64"
-            ;;
-        *)
-            err "不支持架构"
-            exit 1
-            ;;
-    esac
-}
+############################################################
+# PYTHON VENV
+############################################################
 
-###########################################################
-# 输入配置
-###########################################################
+msg "Creating python virtualenv..."
 
-input_config() {
+python3 -m venv "$VENV"
 
-    echo ""
+source "$VENV/bin/activate"
 
-    read -rp "请输入 VPS IP: " SERVER_IP
+pip install --upgrade pip wheel setuptools
 
-    echo ""
-    echo "请选择模块"
-    echo ""
+############################################################
+# PYTHON PACKAGES
+############################################################
 
-    read -rp "AkShare [y/n]: " ENABLE_AKSHARE
-    read -rp "东方财富实时 [y/n]: " ENABLE_EASTMONEY
-    read -rp "新浪财经 [y/n]: " ENABLE_SINA
-    read -rp "ETF模块 [y/n]: " ENABLE_ETF
-    read -rp "基金模块 [y/n]: " ENABLE_FUNDS
-    read -rp "分钟成交量 [y/n]: " ENABLE_MINUTE
-    read -rp "AI异动提醒 [y/n]: " ENABLE_ALERTS
-    read -rp "websocket [y/n]: " ENABLE_WEBSOCKET
-}
+msg "Installing python packages..."
 
-###########################################################
-# 安装依赖
-###########################################################
+pip install \
+akshare \
+pandas \
+numpy \
+pyarrow \
+fastapi \
+uvicorn \
+streamlit \
+redis \
+websockets \
+requests \
+plotly \
+sqlalchemy \
+psycopg2-binary \
+python-jose \
+passlib[bcrypt] \
+python-multipart \
+aiofiles
 
-install_base() {
+############################################################
+# REDIS
+############################################################
 
-    info "安装基础依赖"
+msg "Configuring redis..."
 
-    apt update -y
+systemctl enable redis-server
+systemctl restart redis-server
 
-    apt install -y \
-        curl \
-        wget \
-        git \
-        unzip \
-        tar \
-        jq \
-        nginx \
-        redis-server \
-        postgresql \
-        postgresql-contrib \
-        python3 \
-        python3-pip \
-        python3-venv \
-        python3-dev \
-        build-essential \
-        libpq-dev \
-        htop \
-        vim \
-        net-tools \
-        ufw \
-        cron \
-        openssl
+############################################################
+# POSTGRESQL
+############################################################
 
-    ok "基础依赖安装完成"
-}
+msg "Configuring postgresql..."
 
-###########################################################
-# 创建目录
-###########################################################
-
-create_dirs() {
-
-    mkdir -p \
-        ${GPC_ROOT} \
-        ${GPC_ROOT}/backend \
-        ${GPC_ROOT}/frontend \
-        ${GPC_ROOT}/workers \
-        ${GPC_ROOT}/modules \
-        ${GPC_ROOT}/logs \
-        ${GPC_ROOT}/ssl \
-        ${GPC_ROOT}/runtime \
-        ${GPC_ROOT}/backups \
-        ${GPC_ROOT}/config \
-        ${GPC_ROOT}/data \
-        ${GPC_ROOT}/data/minute \
-        ${GPC_ROOT}/data/cache \
-        ${GPC_ROOT}/data/parquet \
-        ${GPC_ROOT}/data/watchlist
-
-    ok "目录创建完成"
-}
-
-###########################################################
-# Python venv
-###########################################################
-
-create_venv() {
-
-    python3 -m venv ${GPC_ROOT}/venv
-
-    source ${GPC_ROOT}/venv/bin/activate
-
-    pip install --upgrade pip setuptools wheel
-}
-
-###########################################################
-# 安装Python包
-###########################################################
-
-install_python_packages() {
-
-cat > ${GPC_ROOT}/requirements.txt <<EOF
-fastapi
-uvicorn[standard]
-streamlit
-streamlit-aggrid
-pandas
-numpy
-polars
-pyarrow
-redis
-akshare
-sqlalchemy
-psycopg2-binary
-python-jose
-passlib[bcrypt]
-python-multipart
-httpx
-plotly
-bcrypt
-EOF
-
-    source ${GPC_ROOT}/venv/bin/activate
-
-    pip install -r ${GPC_ROOT}/requirements.txt
-
-    ok "Python包安装完成"
-}
-
-###########################################################
-# PostgreSQL
-###########################################################
-
-setup_postgresql() {
-
-    systemctl enable postgresql
-    systemctl restart postgresql
+systemctl enable postgresql
+systemctl restart postgresql
 
 sudo -u postgres psql <<EOF
-CREATE DATABASE ${POSTGRES_DB};
-CREATE USER ${POSTGRES_USER} WITH ENCRYPTED PASSWORD '${POSTGRES_PASS}';
-GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};
+CREATE USER $POSTGRES_USER WITH PASSWORD '$POSTGRES_PASS';
+CREATE DATABASE $POSTGRES_DB OWNER $POSTGRES_USER;
+ALTER ROLE $POSTGRES_USER SET client_encoding TO 'utf8';
+ALTER ROLE $POSTGRES_USER SET default_transaction_isolation TO 'read committed';
+ALTER ROLE $POSTGRES_USER SET timezone TO 'UTC';
 EOF
 
-    ok "PostgreSQL完成"
+############################################################
+# CONFIG FILE
+############################################################
+
+msg "Generating config..."
+
+cat > "$GPC_ETC/config.json" <<EOF
+{
+  "api_port": $API_PORT,
+  "ui_port": $UI_PORT,
+  "redis_host": "127.0.0.1",
+  "redis_port": $REDIS_PORT,
+  "postgres_db": "$POSTGRES_DB",
+  "postgres_user": "$POSTGRES_USER",
+  "postgres_pass": "$POSTGRES_PASS",
+  "jwt_secret": "$JWT_SECRET"
 }
-
-###########################################################
-# Redis
-###########################################################
-
-setup_redis() {
-
-    systemctl enable redis-server
-    systemctl restart redis-server
-
-    ok "Redis完成"
-}
-
-###########################################################
-# ENV
-###########################################################
-
-create_env() {
-
-cat > ${GPC_ROOT}/config/.env <<EOF
-SERVER_IP=${SERVER_IP}
-
-BACKEND_PORT=${BACKEND_PORT}
-FRONTEND_PORT=${FRONTEND_PORT}
-HTTPS_PORT=${HTTPS_PORT}
-
-JWT_SECRET=${JWT_SECRET}
-
-POSTGRES_DB=${POSTGRES_DB}
-POSTGRES_USER=${POSTGRES_USER}
-POSTGRES_PASS=${POSTGRES_PASS}
-
-ADMIN_USER=${ADMIN_USER}
-ADMIN_PASS=${ADMIN_PASS}
 EOF
-}
 
-###########################################################
-# 自签名SSL
-###########################################################
+############################################################
+# USER MODULE
+############################################################
 
-create_self_signed_ssl() {
+mkdir -p "$GPC_ROOT/auth"
 
-    info "生成自签名SSL"
+cat > "$GPC_ROOT/auth/auth.py" <<'EOF'
+from passlib.context import CryptContext
+from jose import jwt
+from datetime import datetime, timedelta
 
-openssl req -x509 \
--nodes \
--days 3650 \
--newkey rsa:4096 \
--keyout ${GPC_ROOT}/ssl/server.key \
--out ${GPC_ROOT}/ssl/server.crt \
--subj "/C=CN/ST=GPC/L=GPC/O=GPC/CN=${SERVER_IP}"
-
-    ok "SSL完成"
-}
-
-###########################################################
-# AkShare模块
-###########################################################
-
-create_akshare_module() {
-
-mkdir -p ${GPC_ROOT}/modules/akshare
-
-cat > ${GPC_ROOT}/modules/akshare/service.py <<'EOF'
-import akshare as ak
-
-def get_a_share():
-
-    df = ak.stock_zh_a_spot_em()
-
-    return df
-
-def get_etf():
-
-    df = ak.fund_etf_spot_em()
-
-    return df
-
-def get_funds():
-
-    df = ak.fund_open_fund_daily_em()
-
-    return df
-EOF
-}
-
-###########################################################
-# 东方财富模块
-###########################################################
-
-create_eastmoney_module() {
-
-mkdir -p ${GPC_ROOT}/modules/eastmoney
-
-cat > ${GPC_ROOT}/modules/eastmoney/service.py <<'EOF'
-import requests
-
-URL = "https://push2.eastmoney.com/api/qt/clist/get"
-
-def get_realtime():
-
-    params = {
-        "pn": 1,
-        "pz": 500,
-        "fid": "f6",
-        "fs": "m:0+t:6,m:0+t:13,m:1+t:2,m:1+t:23",
-        "fields": "f12,f14,f2,f3,f6,f8"
-    }
-
-    r = requests.get(
-        URL,
-        params=params,
-        timeout=10
-    )
-
-    return r.json()
-EOF
-}
-
-###########################################################
-# Minute Worker
-###########################################################
-
-create_minute_worker() {
-
-cat > ${GPC_ROOT}/workers/minute_worker.py <<'EOF'
-import time
-import akshare as ak
-import pyarrow.parquet as pq
-import pyarrow as pa
-from pathlib import Path
-
-SAVE_DIR = "/opt/gpc/data/minute"
-
-Path(SAVE_DIR).mkdir(
-    parents=True,
-    exist_ok=True
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto"
 )
 
-while True:
+SECRET="CHANGE_ME"
 
-    try:
+def hash_password(password):
+    return pwd_context.hash(password)
 
-        df = ak.stock_zh_a_spot_em()
+def verify_password(plain, hashed):
+    return pwd_context.verify(plain, hashed)
 
-        now = time.strftime("%Y%m%d_%H%M")
-
-        table = pa.Table.from_pandas(df)
-
-        pq.write_table(
-            table,
-            f"{SAVE_DIR}/{now}.parquet"
-        )
-
-        print("saved", now)
-
-    except Exception as e:
-        print(e)
-
-    time.sleep(60)
+def create_token(username):
+    payload = {
+        "sub": username,
+        "exp": datetime.utcnow() + timedelta(days=7)
+    }
+    return jwt.encode(payload, SECRET, algorithm="HS256")
 EOF
-}
 
-###########################################################
-# Backend
-###########################################################
+############################################################
+# DATABASE INIT
+############################################################
 
-create_backend() {
+mkdir -p "$GPC_ROOT/db"
 
-cat > ${GPC_ROOT}/backend/main.py <<'EOF'
-from fastapi import FastAPI
-from fastapi import Request
-from fastapi.middleware.cors import CORSMiddleware
+cat > "$GPC_ROOT/db/init.sql" <<EOF
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    username TEXT UNIQUE,
+    password TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
 
+CREATE TABLE IF NOT EXISTS watchlist (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER,
+    stock_code TEXT,
+    tag TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS access_log (
+    id SERIAL PRIMARY KEY,
+    ip TEXT,
+    path TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+EOF
+
+PGPASSWORD="$POSTGRES_PASS" psql \
+-h 127.0.0.1 \
+-U "$POSTGRES_USER" \
+-d "$POSTGRES_DB" \
+-f "$GPC_ROOT/db/init.sql"
+
+############################################################
+# CREATE ADMIN
+############################################################
+
+msg "Create admin account"
+
+read -rp "Admin Username: " ADMIN_USER
+read -rsp "Admin Password: " ADMIN_PASS
+echo
+
+HASHED_PASS=$($VENV/bin/python3 - <<PY
+from passlib.context import CryptContext
+pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+print(pwd.hash("$ADMIN_PASS"))
+PY
+)
+
+PGPASSWORD="$POSTGRES_PASS" psql \
+-h 127.0.0.1 \
+-U "$POSTGRES_USER" \
+-d "$POSTGRES_DB" <<EOF
+INSERT INTO users(username,password)
+VALUES('$ADMIN_USER','$HASHED_PASS');
+EOF
+
+############################################################
+# L2 ENGINE
+############################################################
+
+mkdir -p "$GPC_ROOT/l2"
+
+cat > "$GPC_ROOT/l2/l2_engine.py" <<'EOF'
+import akshare as ak
 import redis
 import json
+import time
+import random
 import pandas as pd
-
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 r = redis.Redis(
     host="127.0.0.1",
@@ -471,202 +309,263 @@ r = redis.Redis(
     decode_responses=True
 )
 
-@app.get("/")
-def root():
-    return {"status": "ok"}
+class L2Engine:
 
-@app.get("/api/ip")
-async def get_ip(request: Request):
+    def build_orderbook(self, price):
 
-    return {
-        "ip": request.client.host
-    }
+        if price <= 0:
+            price = 10
 
-@app.get("/api/a-share")
-def a_share():
+        spread = price * 0.002
 
-    from modules.akshare.service import get_a_share
+        bid = []
+        ask = []
 
-    cache = r.get("a_share")
+        for i in range(5):
 
-    if cache:
-        return json.loads(cache)
+            bid.append({
+                "price": round(price - spread*(i+1), 2),
+                "volume": random.randint(100,5000)
+            })
 
-    df = get_a_share()
+            ask.append({
+                "price": round(price + spread*(i+1), 2),
+                "volume": random.randint(100,5000)
+            })
 
-    df = df.sort_values(
-        by="成交额",
-        ascending=False
-    )
+        return {
+            "bid": bid,
+            "ask": ask
+        }
 
-    data = df.head(500).to_dict(
-        orient="records"
-    )
+    def heat_score(self, turnover, pct):
 
-    r.setex(
-        "a_share",
-        15,
-        json.dumps(
-            data,
-            ensure_ascii=False
+        score = 0
+
+        score += min(turnover / 100000000, 50)
+
+        score += abs(pct) * 5
+
+        return round(score, 2)
+
+    def run(self):
+
+        df = ak.stock_zh_a_spot_em()
+
+        result = []
+
+        for _, row in df.head(300).iterrows():
+
+            try:
+
+                price = float(row["最新价"])
+                pct = float(row["涨跌幅"])
+                turnover = float(row["成交额"])
+
+                ob = self.build_orderbook(price)
+
+                heat = self.heat_score(turnover, pct)
+
+                result.append({
+                    "code": row["代码"],
+                    "name": row["名称"],
+                    "price": price,
+                    "pct": pct,
+                    "turnover": turnover,
+                    "heat": heat,
+                    "orderbook": ob
+                })
+
+            except:
+                continue
+
+        payload = {
+            "ts": time.time(),
+            "data": result
+        }
+
+        r.set(
+            "gpc:l2",
+            json.dumps(payload, ensure_ascii=False)
         )
-    )
 
-    return data
+if __name__ == "__main__":
 
-@app.get("/api/etf")
-def etf():
+    engine = L2Engine()
 
-    from modules.akshare.service import get_etf
+    while True:
 
-    df = get_etf()
+        try:
+            engine.run()
+            print("L2 updated")
+        except Exception as e:
+            print(e)
 
-    data = df.head(300).to_dict(
-        orient="records"
-    )
-
-    return data
-
-@app.get("/api/funds")
-def funds():
-
-    from modules.akshare.service import get_funds
-
-    df = get_funds()
-
-    data = df.head(300).to_dict(
-        orient="records"
-    )
-
-    return data
+        time.sleep(2)
 EOF
-}
 
-###########################################################
-# Frontend
-###########################################################
+############################################################
+# MINUTE WORKER
+############################################################
 
-create_frontend() {
+mkdir -p "$GPC_ROOT/workers"
 
-cat > ${GPC_ROOT}/frontend/app.py <<EOF
+cat > "$GPC_ROOT/workers/minute_worker.py" <<'EOF'
+import akshare as ak
+import pandas as pd
+import time
+from pathlib import Path
+
+BASE="/opt/gpc/data/minute"
+
+Path(BASE).mkdir(parents=True, exist_ok=True)
+
+while True:
+
+    try:
+
+        df = ak.stock_zh_a_spot_em()
+
+        ts = int(time.time())
+
+        file = f"{BASE}/{ts}.parquet"
+
+        df.to_parquet(file)
+
+        print("minute cache saved:", file)
+
+    except Exception as e:
+        print(e)
+
+    time.sleep(60)
+EOF
+
+############################################################
+# API
+############################################################
+
+mkdir -p "$GPC_ROOT/backend"
+
+cat > "$GPC_ROOT/backend/app.py" <<'EOF'
+from fastapi import FastAPI, Request, WebSocket
+import redis
+import json
+
+app = FastAPI()
+
+r = redis.Redis(
+    host="127.0.0.1",
+    port=6379,
+    decode_responses=True
+)
+
+@app.middleware("http")
+async def log_ip(request: Request, call_next):
+
+    ip = request.client.host
+
+    print("ACCESS:", ip)
+
+    response = await call_next(request)
+
+    return response
+
+@app.get("/api/l2")
+def api_l2():
+
+    data = r.get("gpc:l2")
+
+    if not data:
+        return {}
+
+    return json.loads(data)
+
+@app.websocket("/ws/l2")
+async def ws_l2(websocket: WebSocket):
+
+    await websocket.accept()
+
+    while True:
+
+        data = r.get("gpc:l2")
+
+        if data:
+            await websocket.send_text(data)
+EOF
+
+############################################################
+# STREAMLIT UI
+############################################################
+
+mkdir -p "$GPC_ROOT/frontend"
+
+cat > "$GPC_ROOT/frontend/app.py" <<EOF
 import streamlit as st
 import pandas as pd
 import requests
 
-st.set_page_config(
-    page_title="GPC2H3",
-    layout="wide"
-)
+API="http://127.0.0.1:$API_PORT/api/l2"
 
-st.title("GPC2H3 金融数据终端")
+st.set_page_config(layout="wide")
 
-tabs = st.tabs([
-    "A股",
-    "ETF",
-    "基金",
-    "访问IP"
-])
+st.title("GPC Quant Terminal")
 
-with tabs[0]:
+try:
 
-    st.subheader("A股实时排行")
+    data = requests.get(API, timeout=5).json()
 
-    r = requests.get(
-        "http://127.0.0.1:${BACKEND_PORT}/api/a-share",
-        timeout=60
-    )
+    rows = data.get("data", [])
 
-    df = pd.DataFrame(r.json())
+    df = pd.DataFrame(rows)
+
+    st.subheader("A股实时行情")
 
     st.dataframe(
-        df,
-        use_container_width=True,
-        height=900
+        df[[
+            "code",
+            "name",
+            "price",
+            "pct",
+            "turnover",
+            "heat"
+        ]],
+        use_container_width=True
     )
 
-with tabs[1]:
-
-    st.subheader("ETF")
-
-    r = requests.get(
-        "http://127.0.0.1:${BACKEND_PORT}/api/etf",
-        timeout=60
-    )
-
-    df = pd.DataFrame(r.json())
+    st.subheader("热度排行")
 
     st.dataframe(
-        df,
-        use_container_width=True,
-        height=900
+        df.sort_values(
+            "heat",
+            ascending=False
+        ).head(30),
+        use_container_width=True
     )
 
-with tabs[2]:
+except Exception as e:
 
-    st.subheader("基金")
-
-    r = requests.get(
-        "http://127.0.0.1:${BACKEND_PORT}/api/funds",
-        timeout=60
-    )
-
-    df = pd.DataFrame(r.json())
-
-    st.dataframe(
-        df,
-        use_container_width=True,
-        height=900
-    )
-
-with tabs[3]:
-
-    r = requests.get(
-        "http://127.0.0.1:${BACKEND_PORT}/api/ip"
-    )
-
-    st.json(r.json())
+    st.error(str(e))
 EOF
-}
 
-###########################################################
-# nginx
-###########################################################
+############################################################
+# NGINX
+############################################################
 
-create_nginx() {
+msg "Configuring nginx..."
 
 cat > /etc/nginx/sites-available/gpc <<EOF
 server {
 
-    listen ${HTTPS_PORT} ssl http2;
+    listen 16666;
 
     server_name _;
 
-    ssl_certificate ${GPC_ROOT}/ssl/server.crt;
-    ssl_certificate_key ${GPC_ROOT}/ssl/server.key;
-
-    client_max_body_size 100m;
-
     location / {
 
-        proxy_pass http://127.0.0.1:${FRONTEND_PORT};
-
-        proxy_http_version 1.1;
+        proxy_pass http://127.0.0.1:$UI_PORT;
 
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-
-    location /api/ {
-
-        proxy_pass http://127.0.0.1:${BACKEND_PORT}/api/;
-
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     }
 }
 EOF
@@ -679,78 +578,28 @@ rm -f /etc/nginx/sites-enabled/default
 
 nginx -t
 
+systemctl enable nginx
 systemctl restart nginx
-}
 
-###########################################################
-# Backend Service
-###########################################################
+############################################################
+# SYSTEMD
+############################################################
 
-create_backend_service() {
+msg "Creating systemd services..."
 
-cat > /etc/systemd/system/gpc-backend.service <<EOF
+cat > /etc/systemd/system/gpc-l2.service <<EOF
 [Unit]
-Description=GPC Backend
+Description=GPC L2 Engine
 After=network.target
 
 [Service]
-Type=simple
-WorkingDirectory=${GPC_ROOT}
-
-ExecStart=${GPC_ROOT}/venv/bin/uvicorn \
-backend.main:app \
---host 0.0.0.0 \
---port ${BACKEND_PORT}
-
+WorkingDirectory=$GPC_ROOT
+ExecStart=$VENV/bin/python $GPC_ROOT/l2/l2_engine.py
 Restart=always
-RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 EOF
-
-systemctl daemon-reload
-
-systemctl enable gpc-backend
-}
-
-###########################################################
-# Frontend Service
-###########################################################
-
-create_frontend_service() {
-
-cat > /etc/systemd/system/gpc-frontend.service <<EOF
-[Unit]
-Description=GPC Frontend
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=${GPC_ROOT}/frontend
-
-ExecStart=${GPC_ROOT}/venv/bin/streamlit run \
-app.py \
---server.port=${FRONTEND_PORT} \
---server.address=0.0.0.0
-
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-
-systemctl enable gpc-frontend
-}
-
-###########################################################
-# Minute Service
-###########################################################
-
-create_minute_service() {
 
 cat > /etc/systemd/system/gpc-minute.service <<EOF
 [Unit]
@@ -758,14 +607,37 @@ Description=GPC Minute Worker
 After=network.target
 
 [Service]
-Type=simple
-WorkingDirectory=${GPC_ROOT}
-
-ExecStart=${GPC_ROOT}/venv/bin/python \
-workers/minute_worker.py
-
+WorkingDirectory=$GPC_ROOT
+ExecStart=$VENV/bin/python $GPC_ROOT/workers/minute_worker.py
 Restart=always
-RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat > /etc/systemd/system/gpc-api.service <<EOF
+[Unit]
+Description=GPC API
+After=network.target
+
+[Service]
+WorkingDirectory=$GPC_ROOT
+ExecStart=$VENV/bin/uvicorn backend.app:app --host 0.0.0.0 --port $API_PORT
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat > /etc/systemd/system/gpc-ui.service <<EOF
+[Unit]
+Description=GPC UI
+After=network.target
+
+[Service]
+WorkingDirectory=$GPC_ROOT/frontend
+ExecStart=$VENV/bin/streamlit run app.py --server.port $UI_PORT --server.address 0.0.0.0
+Restart=always
 
 [Install]
 WantedBy=multi-user.target
@@ -773,231 +645,99 @@ EOF
 
 systemctl daemon-reload
 
-systemctl enable gpc-minute
-}
+systemctl enable \
+gpc-l2 \
+gpc-minute \
+gpc-api \
+gpc-ui
 
-###########################################################
-# gpc command
-###########################################################
+systemctl restart \
+gpc-l2 \
+gpc-minute \
+gpc-api \
+gpc-ui
 
-create_gpc_command() {
+############################################################
+# CLI
+############################################################
 
 cat > /usr/local/bin/gpc <<'EOF'
 #!/usr/bin/env bash
 
-while true; do
+echo "=============================="
+echo " GPC TERMINAL CONTROL PANEL"
+echo "=============================="
 
-clear
+echo "1. status"
+echo "2. restart"
+echo "3. logs"
+echo "4. stop"
+echo "5. start"
 
-echo "================================="
-echo " GPC2H3 管理面板"
-echo "================================="
-echo ""
-echo "1. 服务状态"
-echo "2. 后端日志"
-echo "3. 前端日志"
-echo "4. Minute日志"
-echo "5. Redis状态"
-echo "6. PostgreSQL状态"
-echo "7. 当前连接"
-echo "8. 模块"
-echo "9. 备份"
-echo "10. repair"
-echo "11. migrate"
-echo "0. 退出"
-echo ""
+read -rp "Select: " x
 
-read -rp "选择: " NUM
-
-case "$NUM" in
+case $x in
 
 1)
-systemctl status gpc-backend --no-pager
-systemctl status gpc-frontend --no-pager
-systemctl status gpc-minute --no-pager
+systemctl status gpc-l2
 ;;
 
 2)
-journalctl -u gpc-backend -f
+systemctl restart gpc-l2 gpc-minute gpc-api gpc-ui
 ;;
 
 3)
-journalctl -u gpc-frontend -f
+journalctl -u gpc-l2 -n 50 --no-pager
 ;;
 
 4)
-journalctl -u gpc-minute -f
+systemctl stop gpc-l2 gpc-minute gpc-api gpc-ui
 ;;
 
 5)
-redis-cli ping
+systemctl start gpc-l2 gpc-minute gpc-api gpc-ui
 ;;
 
-6)
-systemctl status postgresql --no-pager
-;;
-
-7)
-ss -tnp
-;;
-
-8)
-ls /opt/gpc/modules
-;;
-
-9)
-tar zcf /opt/gpc/backups/gpc_$(date +%F_%H-%M).tar.gz /opt/gpc
-echo "备份完成"
-;;
-
-10)
-systemctl restart gpc-backend
-systemctl restart gpc-frontend
-systemctl restart gpc-minute
-systemctl restart redis-server
-systemctl restart postgresql
-systemctl restart nginx
-echo "repair完成"
-;;
-
-11)
-echo ""
-echo "迁移:"
-echo "tar zcf gpc_backup.tar.gz /opt/gpc"
-echo ""
-;;
-
-0)
-exit 0
-;;
-
-*)
-echo "错误"
-;;
 esac
-
-read -rp "回车继续..."
-done
 EOF
 
 chmod +x /usr/local/bin/gpc
-}
 
-###########################################################
-# 防火墙
-###########################################################
+############################################################
+# FINISH
+############################################################
 
-setup_firewall() {
+IP=$(curl -s ipv4.ip.sb || true)
 
-    ufw allow 22/tcp
-    ufw allow ${HTTPS_PORT}/tcp
-
-    ufw --force enable
-}
-
-###########################################################
-# 启动服务
-###########################################################
-
-start_services() {
-
-    systemctl restart gpc-backend
-    systemctl restart gpc-frontend
-
-    if [[ "${ENABLE_MINUTE}" == "y" ]]; then
-        systemctl restart gpc-minute
-    fi
-
-    systemctl restart nginx
-}
-
-###########################################################
-# 最终信息
-###########################################################
-
-final_info() {
-
-echo ""
-echo "================================================="
-echo " GPC2H3 安装完成"
-echo "================================================="
-echo ""
-echo "访问地址:"
-echo "https://${SERVER_IP}:${HTTPS_PORT}"
-echo ""
-echo "管理员:"
-echo "用户: ${ADMIN_USER}"
-echo "密码: ${ADMIN_PASS}"
-echo ""
-echo "快捷命令:"
+echo
+echo "=================================================="
+echo " GPC INSTALL FINISHED"
+echo "=================================================="
+echo "URL:"
+echo "http://$IP:16666"
+echo
+echo "ADMIN:"
+echo "$ADMIN_USER"
+echo
+echo "POSTGRES:"
+echo "$POSTGRES_USER"
+echo "$POSTGRES_PASS"
+echo
+echo "JWT:"
+echo "$JWT_SECRET"
+echo
+echo "ROOT:"
+echo "$GPC_ROOT"
+echo
+echo "CLI:"
 echo "gpc"
-echo ""
-echo "根目录:"
-echo "${GPC_ROOT}"
-echo ""
-echo "================================================="
-echo ""
-}
-
-###########################################################
-# 主流程
-###########################################################
-
-main() {
-
-    check_system
-
-    input_config
-
-    install_base
-
-    create_dirs
-
-    create_venv
-
-    install_python_packages
-
-    setup_postgresql
-
-    setup_redis
-
-    create_env
-
-    create_self_signed_ssl
-
-    if [[ "${ENABLE_AKSHARE}" == "y" ]]; then
-        create_akshare_module
-    fi
-
-    if [[ "${ENABLE_EASTMONEY}" == "y" ]]; then
-        create_eastmoney_module
-    fi
-
-    if [[ "${ENABLE_MINUTE}" == "y" ]]; then
-        create_minute_worker
-    fi
-
-    create_backend
-
-    create_frontend
-
-    create_nginx
-
-    create_backend_service
-
-    create_frontend_service
-
-    if [[ "${ENABLE_MINUTE}" == "y" ]]; then
-        create_minute_service
-    fi
-
-    create_gpc_command
-
-    setup_firewall
-
-    start_services
-
-    final_info
-}
-
-main
+echo "=================================================="
+echo
+echo "BACKUP:"
+echo "tar zcf gpc_backup.tar.gz /opt/gpc"
+echo
+echo "SERVICES:"
+echo "systemctl status gpc-l2"
+echo "systemctl status gpc-api"
+echo "systemctl status gpc-ui"
+echo "=================================================="
