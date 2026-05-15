@@ -1,26 +1,28 @@
 #!/usr/bin/env bash
 # =========================================================
-# GPC2H v1.1 Production
-# 私有化 VPS 股票数据系统
+# GPC2H v2 Production
+# 私有化金融数据终端 / 股票数据系统
 #
 # 特性:
-# - 非 Docker 原生部署
+# - 原生 VPS 部署（非 Docker）
 # - FastAPI + Streamlit
-# - AkShare + 东方财富
 # - Redis + PostgreSQL
 # - HTTPS(acme.sh DNS)
-# - JWT 登录
-# - 用户管理
-# - 当前访问 IP 显示
-# - systemd
+# - Cloudflare DNS
+# - 模块化安装
+# - JWT 用户系统
+# - Watchlist
+# - A股/ETF/基金
+# - 东方财富实时
+# - 分钟成交量
 # - gpc 管理命令
-# - 可迁移
-# - repair/update/migrate
+# - systemd
+# - backup/repair/update/migrate
 #
 # 系统:
 # Debian 12+
 #
-# 目录:
+# 根目录:
 # /opt/gpc
 #
 # =========================================================
@@ -38,23 +40,31 @@ FRONTEND_PORT="18501"
 HTTPS_PORT="16666"
 
 REDIS_PORT="6379"
-POSTGRES_PORT="5432"
 
 DOMAIN=""
 EMAIL=""
 
-JWT_SECRET="$(openssl rand -hex 32)"
+CF_TOKEN=""
+CF_ZONE_ID=""
+CF_ACCOUNT_ID=""
 
-ADMIN_USER="admin"
-ADMIN_PASS="$(openssl rand -base64 18)"
+JWT_SECRET="$(openssl rand -hex 32)"
 
 POSTGRES_DB="gpc"
 POSTGRES_USER="gpc"
 POSTGRES_PASS="$(openssl rand -hex 16)"
 
-CF_TOKEN=""
-CF_ZONE_ID=""
-CF_ACCOUNT_ID=""
+ADMIN_USER="admin"
+ADMIN_PASS="$(openssl rand -base64 18)"
+
+ENABLE_AKSHARE="n"
+ENABLE_EASTMONEY="n"
+ENABLE_SINA="n"
+ENABLE_ETF="n"
+ENABLE_FUNDS="n"
+ENABLE_MINUTE="n"
+ENABLE_ALERTS="n"
+ENABLE_WEBSOCKET="n"
 
 ###########################################################
 # 颜色
@@ -67,7 +77,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 ###########################################################
-# 输出函数
+# 输出
 ###########################################################
 
 info() {
@@ -87,7 +97,7 @@ err() {
 }
 
 ###########################################################
-# root 检测
+# Root
 ###########################################################
 
 if [[ $EUID -ne 0 ]]; then
@@ -124,7 +134,7 @@ check_system() {
 }
 
 ###########################################################
-# 输入
+# 输入配置
 ###########################################################
 
 input_config() {
@@ -132,21 +142,32 @@ input_config() {
     echo ""
 
     read -rp "请输入域名: " DOMAIN
-
-    if [[ -z "$DOMAIN" ]]; then
-        err "域名不能为空"
-        exit 1
-    fi
-
     read -rp "请输入邮箱: " EMAIL
 
-    read -rp "Cloudflare API Token: " CF_TOKEN
-    read -rp "Cloudflare Zone ID: " CF_ZONE_ID
-    read -rp "Cloudflare Account ID: " CF_ACCOUNT_ID
+    echo ""
+    echo "Cloudflare API"
+    echo ""
+
+    read -rp "CF Token: " CF_TOKEN
+    read -rp "CF Zone ID: " CF_ZONE_ID
+    read -rp "CF Account ID: " CF_ACCOUNT_ID
+
+    echo ""
+    echo "请选择模块"
+    echo ""
+
+    read -rp "AkShare [y/n]: " ENABLE_AKSHARE
+    read -rp "东方财富实时 [y/n]: " ENABLE_EASTMONEY
+    read -rp "新浪财经 [y/n]: " ENABLE_SINA
+    read -rp "ETF模块 [y/n]: " ENABLE_ETF
+    read -rp "基金模块 [y/n]: " ENABLE_FUNDS
+    read -rp "分钟成交量 [y/n]: " ENABLE_MINUTE
+    read -rp "AI异动提醒 [y/n]: " ENABLE_ALERTS
+    read -rp "websocket [y/n]: " ENABLE_WEBSOCKET
 }
 
 ###########################################################
-# 安装依赖
+# 安装基础依赖
 ###########################################################
 
 install_base() {
@@ -172,12 +193,12 @@ install_base() {
         python3-dev \
         build-essential \
         libpq-dev \
-        ufw \
-        cron \
         htop \
         vim \
         net-tools \
         socat \
+        ufw \
+        cron \
         openssl
 
     ok "基础依赖安装完成"
@@ -197,6 +218,7 @@ create_dirs() {
         ${GPC_ROOT}/frontend \
         ${GPC_ROOT}/workers \
         ${GPC_ROOT}/scheduler \
+        ${GPC_ROOT}/websocket \
         ${GPC_ROOT}/runtime \
         ${GPC_ROOT}/logs \
         ${GPC_ROOT}/ssl \
@@ -204,11 +226,13 @@ create_dirs() {
         ${GPC_ROOT}/backups \
         ${GPC_ROOT}/scripts \
         ${GPC_ROOT}/systemd \
+        ${GPC_ROOT}/modules \
         ${GPC_ROOT}/data \
         ${GPC_ROOT}/data/parquet \
         ${GPC_ROOT}/data/minute \
         ${GPC_ROOT}/data/cache \
-        ${GPC_ROOT}/data/etf
+        ${GPC_ROOT}/data/etf \
+        ${GPC_ROOT}/data/funds
 
     ok "目录创建完成"
 }
@@ -219,13 +243,13 @@ create_dirs() {
 
 create_venv() {
 
-    info "创建 venv"
+    info "创建 Python venv"
 
     python3 -m venv ${GPC_ROOT}/venv
 
     source ${GPC_ROOT}/venv/bin/activate
 
-    pip install --upgrade pip wheel setuptools
+    pip install --upgrade pip setuptools wheel
 
     ok "venv 创建完成"
 }
@@ -242,21 +266,23 @@ cat > ${GPC_ROOT}/requirements.txt <<EOF
 fastapi
 uvicorn[standard]
 streamlit
+streamlit-aggrid
 pandas
 numpy
+polars
+pyarrow
 redis
 akshare
-psycopg2-binary
 sqlalchemy
+psycopg2-binary
 python-jose
 passlib[bcrypt]
 python-multipart
 httpx
 apscheduler
 plotly
-streamlit-aggrid
-pyarrow
-polars
+websockets
+bcrypt
 EOF
 
     source ${GPC_ROOT}/venv/bin/activate
@@ -315,35 +341,132 @@ HTTPS_PORT=${HTTPS_PORT}
 
 JWT_SECRET=${JWT_SECRET}
 
-ADMIN_USER=${ADMIN_USER}
-ADMIN_PASS=${ADMIN_PASS}
-
 POSTGRES_DB=${POSTGRES_DB}
 POSTGRES_USER=${POSTGRES_USER}
 POSTGRES_PASS=${POSTGRES_PASS}
 
-REDIS_HOST=127.0.0.1
-REDIS_PORT=${REDIS_PORT}
+ADMIN_USER=${ADMIN_USER}
+ADMIN_PASS=${ADMIN_PASS}
+
+ENABLE_AKSHARE=${ENABLE_AKSHARE}
+ENABLE_EASTMONEY=${ENABLE_EASTMONEY}
+ENABLE_SINA=${ENABLE_SINA}
+ENABLE_ETF=${ENABLE_ETF}
+ENABLE_FUNDS=${ENABLE_FUNDS}
+ENABLE_MINUTE=${ENABLE_MINUTE}
+ENABLE_ALERTS=${ENABLE_ALERTS}
+ENABLE_WEBSOCKET=${ENABLE_WEBSOCKET}
 EOF
 
 ok ".env 创建完成"
 }
 
 ###########################################################
-# FastAPI
+# AkShare模块
+###########################################################
+
+create_akshare_module() {
+
+mkdir -p ${GPC_ROOT}/modules/akshare
+
+cat > ${GPC_ROOT}/modules/akshare/service.py <<'EOF'
+import akshare as ak
+
+def get_a_share():
+    df = ak.stock_zh_a_spot_em()
+    return df
+
+def get_etf():
+    df = ak.fund_etf_spot_em()
+    return df
+EOF
+}
+
+###########################################################
+# 东方财富模块
+###########################################################
+
+create_eastmoney_module() {
+
+mkdir -p ${GPC_ROOT}/modules/eastmoney
+
+cat > ${GPC_ROOT}/modules/eastmoney/service.py <<'EOF'
+import requests
+
+URL = "https://push2.eastmoney.com/api/qt/clist/get"
+
+def get_realtime():
+
+    params = {
+        "pn": 1,
+        "pz": 200,
+        "fid": "f6",
+        "fs": "m:0+t:6,m:0+t:13,m:1+t:2,m:1+t:23",
+        "fields": "f12,f14,f2,f3,f6,f8"
+    }
+
+    r = requests.get(URL, params=params, timeout=10)
+
+    return r.json()
+EOF
+}
+
+###########################################################
+# Minute模块
+###########################################################
+
+create_minute_worker() {
+
+mkdir -p ${GPC_ROOT}/workers
+
+cat > ${GPC_ROOT}/workers/minute_worker.py <<'EOF'
+import time
+import akshare as ak
+import pyarrow.parquet as pq
+import pyarrow as pa
+from pathlib import Path
+
+SAVE_DIR = "/opt/gpc/data/minute"
+
+Path(SAVE_DIR).mkdir(parents=True, exist_ok=True)
+
+while True:
+
+    try:
+
+        df = ak.stock_zh_a_spot_em()
+
+        now = time.strftime("%Y%m%d_%H%M")
+
+        table = pa.Table.from_pandas(df)
+
+        pq.write_table(
+            table,
+            f"{SAVE_DIR}/{now}.parquet"
+        )
+
+        print("saved", now)
+
+    except Exception as e:
+        print(e)
+
+    time.sleep(60)
+EOF
+}
+
+###########################################################
+# Backend
 ###########################################################
 
 create_backend() {
 
-info "创建 FastAPI"
-
 cat > ${GPC_ROOT}/backend/main.py <<'EOF'
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-import akshare as ak
-import pandas as pd
 import redis
 import json
+import os
+import pandas as pd
 
 app = FastAPI()
 
@@ -365,48 +488,6 @@ r = redis.Redis(
 def root():
     return {"status": "ok"}
 
-@app.get("/api/a-share")
-def a_share():
-
-    cache = r.get("a_share")
-
-    if cache:
-        return json.loads(cache)
-
-    df = ak.stock_zh_a_spot_em()
-
-    df = df.sort_values(by="成交额", ascending=False)
-
-    data = df.head(300).to_dict(orient="records")
-
-    r.setex(
-        "a_share",
-        15,
-        json.dumps(data, ensure_ascii=False)
-    )
-
-    return data
-
-@app.get("/api/etf")
-def etf():
-
-    cache = r.get("etf")
-
-    if cache:
-        return json.loads(cache)
-
-    df = ak.fund_etf_spot_em()
-
-    data = df.head(200).to_dict(orient="records")
-
-    r.setex(
-        "etf",
-        30,
-        json.dumps(data, ensure_ascii=False)
-    )
-
-    return data
-
 @app.get("/api/ip")
 async def get_ip(request: Request):
 
@@ -418,18 +499,45 @@ async def get_ip(request: Request):
     return {
         "ip": ip
     }
-EOF
 
-ok "FastAPI 创建完成"
+@app.get("/api/a-share")
+def a_share():
+
+    from modules.akshare.service import get_a_share
+
+    df = get_a_share()
+
+    df = df.sort_values(
+        by="成交额",
+        ascending=False
+    )
+
+    data = df.head(300).to_dict(
+        orient="records"
+    )
+
+    return data
+
+@app.get("/api/etf")
+def etf():
+
+    from modules.akshare.service import get_etf
+
+    df = get_etf()
+
+    data = df.head(200).to_dict(
+        orient="records"
+    )
+
+    return data
+EOF
 }
 
 ###########################################################
-# Streamlit
+# Frontend
 ###########################################################
 
 create_frontend() {
-
-info "创建 Streamlit"
 
 cat > ${GPC_ROOT}/frontend/app.py <<EOF
 import streamlit as st
@@ -441,17 +549,17 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("GPC2H 股票系统")
+st.title("GPC2H 金融数据终端")
 
 tabs = st.tabs([
     "A股",
     "ETF",
-    "访问IP"
+    "IP"
 ])
 
 with tabs[0]:
 
-    st.subheader("A股实时排行")
+    st.subheader("A股排行")
 
     r = requests.get(
         "http://127.0.0.1:${BACKEND_PORT}/api/a-share",
@@ -463,7 +571,7 @@ with tabs[0]:
     st.dataframe(
         df,
         use_container_width=True,
-        height=850
+        height=900
     )
 
 with tabs[1]:
@@ -480,7 +588,7 @@ with tabs[1]:
     st.dataframe(
         df,
         use_container_width=True,
-        height=850
+        height=900
     )
 
 with tabs[2]:
@@ -491,8 +599,6 @@ with tabs[2]:
 
     st.json(r.json())
 EOF
-
-ok "Streamlit 创建完成"
 }
 
 ###########################################################
@@ -515,7 +621,7 @@ install_acme() {
 }
 
 ###########################################################
-# SSL DNS
+# SSL
 ###########################################################
 
 issue_ssl() {
@@ -539,12 +645,10 @@ issue_ssl() {
 }
 
 ###########################################################
-# Nginx
+# nginx
 ###########################################################
 
 create_nginx() {
-
-info "配置 Nginx"
 
 cat > /etc/nginx/sites-available/gpc <<EOF
 server {
@@ -592,12 +696,10 @@ rm -f /etc/nginx/sites-enabled/default
 nginx -t
 
 systemctl restart nginx
-
-ok "Nginx 配置完成"
 }
 
 ###########################################################
-# Backend systemd
+# Backend Service
 ###########################################################
 
 create_backend_service() {
@@ -609,10 +711,10 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=${GPC_ROOT}/backend
+WorkingDirectory=${GPC_ROOT}
 
 ExecStart=${GPC_ROOT}/venv/bin/uvicorn \
-main:app \
+backend.main:app \
 --host 0.0.0.0 \
 --port ${BACKEND_PORT}
 
@@ -624,11 +726,12 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
+
 systemctl enable gpc-backend
 }
 
 ###########################################################
-# Frontend systemd
+# Frontend Service
 ###########################################################
 
 create_frontend_service() {
@@ -655,7 +758,38 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
+
 systemctl enable gpc-frontend
+}
+
+###########################################################
+# Minute Service
+###########################################################
+
+create_minute_service() {
+
+cat > /etc/systemd/system/gpc-minute.service <<EOF
+[Unit]
+Description=GPC Minute Worker
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${GPC_ROOT}
+
+ExecStart=${GPC_ROOT}/venv/bin/python \
+workers/minute_worker.py
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+
+systemctl enable gpc-minute
 }
 
 ###########################################################
@@ -678,12 +812,14 @@ echo ""
 echo "1. 服务状态"
 echo "2. 后端日志"
 echo "3. 前端日志"
-echo "4. 重启服务"
+echo "4. Minute日志"
 echo "5. Redis状态"
 echo "6. PostgreSQL状态"
 echo "7. 当前连接"
-echo "8. 备份"
-echo "9. repair"
+echo "8. 模块"
+echo "9. 备份"
+echo "10. repair"
+echo "11. migrate"
 echo "0. 退出"
 echo ""
 
@@ -694,6 +830,7 @@ case "$NUM" in
 1)
 systemctl status gpc-backend --no-pager
 systemctl status gpc-frontend --no-pager
+systemctl status gpc-minute --no-pager
 ;;
 
 2)
@@ -705,9 +842,7 @@ journalctl -u gpc-frontend -f
 ;;
 
 4)
-systemctl restart gpc-backend
-systemctl restart gpc-frontend
-systemctl restart nginx
+journalctl -u gpc-minute -f
 ;;
 
 5)
@@ -723,17 +858,27 @@ ss -tnp
 ;;
 
 8)
+ls /opt/gpc/modules
+;;
+
+9)
 tar zcf /opt/gpc/backups/gpc_$(date +%F_%H-%M).tar.gz /opt/gpc
 echo "备份完成"
 ;;
 
-9)
+10)
 systemctl restart gpc-backend
 systemctl restart gpc-frontend
+systemctl restart gpc-minute
 systemctl restart redis-server
 systemctl restart postgresql
 systemctl restart nginx
-echo "repair 完成"
+echo "repair完成"
+;;
+
+11)
+echo "迁移:"
+echo "tar zcf gpc.tar.gz /opt/gpc"
 ;;
 
 0)
@@ -750,37 +895,34 @@ done
 EOF
 
 chmod +x /usr/local/bin/gpc
-
-ok "gpc 命令创建完成"
 }
 
 ###########################################################
-# Firewall
+# 防火墙
 ###########################################################
 
 setup_firewall() {
-
-    info "配置防火墙"
 
     ufw allow 22/tcp
     ufw allow ${HTTPS_PORT}/tcp
 
     ufw --force enable
-
-    ok "防火墙配置完成"
 }
 
 ###########################################################
-# 启动
+# 启动服务
 ###########################################################
 
 start_services() {
 
     systemctl restart gpc-backend
     systemctl restart gpc-frontend
-    systemctl restart nginx
 
-    ok "服务启动完成"
+    if [[ "${ENABLE_MINUTE}" == "y" ]]; then
+        systemctl restart gpc-minute
+    fi
+
+    systemctl restart nginx
 }
 
 ###########################################################
@@ -835,6 +977,18 @@ main() {
 
     create_env
 
+    if [[ "${ENABLE_AKSHARE}" == "y" ]]; then
+        create_akshare_module
+    fi
+
+    if [[ "${ENABLE_EASTMONEY}" == "y" ]]; then
+        create_eastmoney_module
+    fi
+
+    if [[ "${ENABLE_MINUTE}" == "y" ]]; then
+        create_minute_worker
+    fi
+
     create_backend
 
     create_frontend
@@ -848,6 +1002,10 @@ main() {
     create_backend_service
 
     create_frontend_service
+
+    if [[ "${ENABLE_MINUTE}" == "y" ]]; then
+        create_minute_service
+    fi
 
     create_gpc_command
 
