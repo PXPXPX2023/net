@@ -1,58 +1,22 @@
 #!/usr/bin/env bash
-# =========================================================
-# GPC2H3.SH
-# GPC Quant Terminal Ultimate Production Edition
-#
-# Features:
-# - AkShare + Eastmoney + Sina + THS data framework
-# - Streamlit terminal
-# - FastAPI + WebSocket
-# - Redis cache
-# - PostgreSQL user system
-# - JWT auth
-# - Watchlist
-# - L2 Engine v3
-# - Minute parquet cache
-# - systemd services
-# - IP access log
-# - self-hosted VPS deployment
-# - no docker
-# - portable
-#
-# Install Path:
-# /opt/gpc
-#
-# Debian 12 / Ubuntu 22+
-# =========================================================
-
 set -Eeuo pipefail
 
 ############################################################
-# GLOBAL
+# GPC2H3 ULTIMATE
 ############################################################
 
-GPC_ROOT="/opt/gpc"
-GPC_DATA="$GPC_ROOT/data"
-GPC_LOG="$GPC_ROOT/logs"
-GPC_ETC="$GPC_ROOT/etc"
+ROOT="/opt/gpc"
+VENV="$ROOT/venv"
 
-VENV="$GPC_ROOT/venv"
+API_PORT=18000
+UI_PORT=18501
+NGINX_PORT=16666
 
-REDIS_PORT="6379"
-API_PORT="18000"
-UI_PORT="18501"
+REDIS_PORT=6379
 
 POSTGRES_DB="gpc"
-POSTGRES_USER="gpc"
-POSTGRES_PASS="$(openssl rand -hex 16)"
 
-JWT_SECRET="$(openssl rand -hex 32)"
-
-mkdir -p \
-$GPC_ROOT \
-$GPC_DATA \
-$GPC_LOG \
-$GPC_ETC
+mkdir -p $ROOT/{data,logs,etc,workers,l2,backend,frontend,auth}
 
 ############################################################
 # COLORS
@@ -63,11 +27,7 @@ RED="\033[31m"
 YELLOW="\033[33m"
 NC="\033[0m"
 
-############################################################
-# HELPERS
-############################################################
-
-msg() {
+info() {
     echo -e "${GREEN}[INFO]${NC} $1"
 }
 
@@ -75,24 +35,24 @@ warn() {
     echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
-err() {
+error() {
     echo -e "${RED}[ERR ]${NC} $1"
 }
 
 ############################################################
-# CHECK ROOT
+# ROOT
 ############################################################
 
 if [ "$(id -u)" != "0" ]; then
-    err "Please run as root"
+    error "Please run as root"
     exit 1
 fi
 
 ############################################################
-# SYSTEM UPDATE
+# INSTALL
 ############################################################
 
-msg "Updating system..."
+info "Installing packages..."
 
 apt update -y
 
@@ -101,36 +61,43 @@ python3 \
 python3-pip \
 python3-venv \
 build-essential \
-curl \
-wget \
-git \
 redis-server \
 postgresql \
 postgresql-contrib \
 nginx \
-htop \
+curl \
+wget \
+git \
 jq \
-unzip \
-openssl \
-sqlite3
+sqlite3 \
+htop \
+unzip
 
 ############################################################
 # PYTHON VENV
 ############################################################
 
-msg "Creating python virtualenv..."
+info "Creating python venv..."
 
-python3 -m venv "$VENV"
+python3 -m venv $VENV
 
-source "$VENV/bin/activate"
+source $VENV/bin/activate
 
-pip install --upgrade pip wheel setuptools
+pip install --upgrade pip setuptools wheel
 
 ############################################################
-# PYTHON PACKAGES
+# FIX BCRYPT
 ############################################################
 
-msg "Installing python packages..."
+pip uninstall -y bcrypt || true
+
+pip install bcrypt==3.2.2
+
+############################################################
+# PYTHON MODULES
+############################################################
+
+info "Installing python modules..."
 
 pip install \
 akshare \
@@ -146,8 +113,8 @@ requests \
 plotly \
 sqlalchemy \
 psycopg2-binary \
+passlib==1.7.4 \
 python-jose \
-passlib[bcrypt] \
 python-multipart \
 aiofiles
 
@@ -155,86 +122,82 @@ aiofiles
 # REDIS
 ############################################################
 
-msg "Configuring redis..."
-
 systemctl enable redis-server
 systemctl restart redis-server
 
 ############################################################
-# POSTGRESQL
+# POSTGRES
 ############################################################
-
-msg "Configuring postgresql..."
 
 systemctl enable postgresql
 systemctl restart postgresql
 
+POSTGRES_USER="gpc"
+POSTGRES_PASS=$(openssl rand -hex 12)
+
 sudo -u postgres psql <<EOF
-CREATE USER $POSTGRES_USER WITH PASSWORD '$POSTGRES_PASS';
-CREATE DATABASE $POSTGRES_DB OWNER $POSTGRES_USER;
-ALTER ROLE $POSTGRES_USER SET client_encoding TO 'utf8';
-ALTER ROLE $POSTGRES_USER SET default_transaction_isolation TO 'read committed';
-ALTER ROLE $POSTGRES_USER SET timezone TO 'UTC';
+DO
+\$\$
+BEGIN
+   IF NOT EXISTS (
+      SELECT FROM pg_catalog.pg_roles
+      WHERE rolname = '$POSTGRES_USER'
+   ) THEN
+
+      CREATE ROLE $POSTGRES_USER LOGIN PASSWORD '$POSTGRES_PASS';
+
+   END IF;
+END
+\$\$;
+EOF
+
+sudo -u postgres psql <<EOF
+SELECT 'CREATE DATABASE $POSTGRES_DB'
+WHERE NOT EXISTS (
+    SELECT FROM pg_database WHERE datname = '$POSTGRES_DB'
+)\gexec
 EOF
 
 ############################################################
-# CONFIG FILE
+# ADMIN
 ############################################################
 
-msg "Generating config..."
+echo
+echo "============================"
+echo " CREATE ADMIN USER"
+echo "============================"
 
-cat > "$GPC_ETC/config.json" <<EOF
-{
-  "api_port": $API_PORT,
-  "ui_port": $UI_PORT,
-  "redis_host": "127.0.0.1",
-  "redis_port": $REDIS_PORT,
-  "postgres_db": "$POSTGRES_DB",
-  "postgres_user": "$POSTGRES_USER",
-  "postgres_pass": "$POSTGRES_PASS",
-  "jwt_secret": "$JWT_SECRET"
-}
-EOF
+read -rp "Username: " ADMIN_USER
+read -rsp "Password (8~32 chars): " ADMIN_PASS
+echo
 
-############################################################
-# USER MODULE
-############################################################
+if [ ${#ADMIN_PASS} -lt 8 ]; then
+    error "Password too short"
+    exit 1
+fi
 
-mkdir -p "$GPC_ROOT/auth"
+if [ ${#ADMIN_PASS} -gt 32 ]; then
+    error "Password too long"
+    exit 1
+fi
 
-cat > "$GPC_ROOT/auth/auth.py" <<'EOF'
+HASHED_PASS=$($VENV/bin/python3 - <<PY
 from passlib.context import CryptContext
-from jose import jwt
-from datetime import datetime, timedelta
 
-pwd_context = CryptContext(
+pwd = CryptContext(
     schemes=["bcrypt"],
     deprecated="auto"
 )
 
-SECRET="CHANGE_ME"
-
-def hash_password(password):
-    return pwd_context.hash(password)
-
-def verify_password(plain, hashed):
-    return pwd_context.verify(plain, hashed)
-
-def create_token(username):
-    payload = {
-        "sub": username,
-        "exp": datetime.utcnow() + timedelta(days=7)
-    }
-    return jwt.encode(payload, SECRET, algorithm="HS256")
-EOF
+print(pwd.hash("$ADMIN_PASS"))
+PY
+)
 
 ############################################################
-# DATABASE INIT
+# DB INIT
 ############################################################
 
-mkdir -p "$GPC_ROOT/db"
-
-cat > "$GPC_ROOT/db/init.sql" <<EOF
+cat > $ROOT/etc/init.sql <<EOF
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username TEXT UNIQUE,
@@ -246,7 +209,6 @@ CREATE TABLE IF NOT EXISTS watchlist (
     id SERIAL PRIMARY KEY,
     user_id INTEGER,
     stock_code TEXT,
-    tag TEXT,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -260,42 +222,57 @@ EOF
 
 PGPASSWORD="$POSTGRES_PASS" psql \
 -h 127.0.0.1 \
--U "$POSTGRES_USER" \
--d "$POSTGRES_DB" \
--f "$GPC_ROOT/db/init.sql"
-
-############################################################
-# CREATE ADMIN
-############################################################
-
-msg "Create admin account"
-
-read -rp "Admin Username: " ADMIN_USER
-read -rsp "Admin Password: " ADMIN_PASS
-echo
-
-HASHED_PASS=$($VENV/bin/python3 - <<PY
-from passlib.context import CryptContext
-pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
-print(pwd.hash("$ADMIN_PASS"))
-PY
-)
+-U $POSTGRES_USER \
+-d $POSTGRES_DB \
+-f $ROOT/etc/init.sql
 
 PGPASSWORD="$POSTGRES_PASS" psql \
 -h 127.0.0.1 \
--U "$POSTGRES_USER" \
--d "$POSTGRES_DB" <<EOF
+-U $POSTGRES_USER \
+-d $POSTGRES_DB <<EOF
 INSERT INTO users(username,password)
-VALUES('$ADMIN_USER','$HASHED_PASS');
+VALUES('$ADMIN_USER','$HASHED_PASS')
+ON CONFLICT (username) DO NOTHING;
+EOF
+
+############################################################
+# MODULE SELECT
+############################################################
+
+echo
+echo "============================"
+echo " MODULE SELECT"
+echo "============================"
+
+read -rp "Install ETF module? (y/n): " ETF_ENABLE
+read -rp "Install FUND module? (y/n): " FUND_ENABLE
+read -rp "Install INDEX module? (y/n): " INDEX_ENABLE
+
+############################################################
+# CONFIG
+############################################################
+
+JWT_SECRET=$(openssl rand -hex 32)
+
+cat > $ROOT/etc/config.json <<EOF
+{
+  "api_port": $API_PORT,
+  "ui_port": $UI_PORT,
+  "jwt_secret": "$JWT_SECRET",
+  "postgres_user": "$POSTGRES_USER",
+  "postgres_pass": "$POSTGRES_PASS",
+  "postgres_db": "$POSTGRES_DB",
+  "etf": "$ETF_ENABLE",
+  "fund": "$FUND_ENABLE",
+  "index": "$INDEX_ENABLE"
+}
 EOF
 
 ############################################################
 # L2 ENGINE
 ############################################################
 
-mkdir -p "$GPC_ROOT/l2"
-
-cat > "$GPC_ROOT/l2/l2_engine.py" <<'EOF'
+cat > $ROOT/l2/l2_engine.py <<'EOF'
 import akshare as ak
 import redis
 import json
@@ -311,7 +288,7 @@ r = redis.Redis(
 
 class L2Engine:
 
-    def build_orderbook(self, price):
+    def orderbook(self, price):
 
         if price <= 0:
             price = 10
@@ -338,23 +315,16 @@ class L2Engine:
             "ask": ask
         }
 
-    def heat_score(self, turnover, pct):
-
-        score = 0
-
-        score += min(turnover / 100000000, 50)
-
-        score += abs(pct) * 5
-
-        return round(score, 2)
-
     def run(self):
 
         df = ak.stock_zh_a_spot_em()
 
-        result = []
+        # 防Redis爆炸
+        df = df.head(500)
 
-        for _, row in df.head(300).iterrows():
+        rows = []
+
+        for _, row in df.iterrows():
 
             try:
 
@@ -362,18 +332,19 @@ class L2Engine:
                 pct = float(row["涨跌幅"])
                 turnover = float(row["成交额"])
 
-                ob = self.build_orderbook(price)
+                heat = round(
+                    abs(pct)*5 + turnover/100000000,
+                    2
+                )
 
-                heat = self.heat_score(turnover, pct)
-
-                result.append({
+                rows.append({
                     "code": row["代码"],
                     "name": row["名称"],
                     "price": price,
                     "pct": pct,
                     "turnover": turnover,
                     "heat": heat,
-                    "orderbook": ob
+                    "orderbook": self.orderbook(price)
                 })
 
             except:
@@ -381,7 +352,7 @@ class L2Engine:
 
         payload = {
             "ts": time.time(),
-            "data": result
+            "data": rows
         }
 
         r.set(
@@ -391,15 +362,15 @@ class L2Engine:
 
 if __name__ == "__main__":
 
-    engine = L2Engine()
+    e = L2Engine()
 
     while True:
 
         try:
-            engine.run()
+            e.run()
             print("L2 updated")
-        except Exception as e:
-            print(e)
+        except Exception as ex:
+            print(ex)
 
         time.sleep(2)
 EOF
@@ -408,17 +379,21 @@ EOF
 # MINUTE WORKER
 ############################################################
 
-mkdir -p "$GPC_ROOT/workers"
-
-cat > "$GPC_ROOT/workers/minute_worker.py" <<'EOF'
+cat > $ROOT/workers/minute_worker.py <<'EOF'
 import akshare as ak
 import pandas as pd
 import time
 from pathlib import Path
+import os
 
 BASE="/opt/gpc/data/minute"
 
-Path(BASE).mkdir(parents=True, exist_ok=True)
+Path(BASE).mkdir(
+    parents=True,
+    exist_ok=True
+)
+
+MAX_FILES=1440
 
 while True:
 
@@ -432,7 +407,15 @@ while True:
 
         df.to_parquet(file)
 
-        print("minute cache saved:", file)
+        files = sorted(os.listdir(BASE))
+
+        if len(files) > MAX_FILES:
+
+            remove = files[0]
+
+            os.remove(f"{BASE}/{remove}")
+
+        print("minute cache saved")
 
     except Exception as e:
         print(e)
@@ -444,9 +427,7 @@ EOF
 # API
 ############################################################
 
-mkdir -p "$GPC_ROOT/backend"
-
-cat > "$GPC_ROOT/backend/app.py" <<'EOF'
+cat > $ROOT/backend/app.py <<EOF
 from fastapi import FastAPI, Request, WebSocket
 import redis
 import json
@@ -455,16 +436,14 @@ app = FastAPI()
 
 r = redis.Redis(
     host="127.0.0.1",
-    port=6379,
+    port=$REDIS_PORT,
     decode_responses=True
 )
 
 @app.middleware("http")
 async def log_ip(request: Request, call_next):
 
-    ip = request.client.host
-
-    print("ACCESS:", ip)
+    print("ACCESS:", request.client.host)
 
     response = await call_next(request)
 
@@ -494,12 +473,10 @@ async def ws_l2(websocket: WebSocket):
 EOF
 
 ############################################################
-# STREAMLIT UI
+# STREAMLIT
 ############################################################
 
-mkdir -p "$GPC_ROOT/frontend"
-
-cat > "$GPC_ROOT/frontend/app.py" <<EOF
+cat > $ROOT/frontend/app.py <<EOF
 import streamlit as st
 import pandas as pd
 import requests
@@ -508,11 +485,11 @@ API="http://127.0.0.1:$API_PORT/api/l2"
 
 st.set_page_config(layout="wide")
 
-st.title("GPC Quant Terminal")
+st.title("GPC QUANT TERMINAL")
 
 try:
 
-    data = requests.get(API, timeout=5).json()
+    data = requests.get(API).json()
 
     rows = data.get("data", [])
 
@@ -538,12 +515,11 @@ try:
         df.sort_values(
             "heat",
             ascending=False
-        ).head(30),
+        ).head(50),
         use_container_width=True
     )
 
 except Exception as e:
-
     st.error(str(e))
 EOF
 
@@ -551,12 +527,10 @@ EOF
 # NGINX
 ############################################################
 
-msg "Configuring nginx..."
-
 cat > /etc/nginx/sites-available/gpc <<EOF
 server {
 
-    listen 16666;
+    listen $NGINX_PORT;
 
     server_name _;
 
@@ -585,16 +559,14 @@ systemctl restart nginx
 # SYSTEMD
 ############################################################
 
-msg "Creating systemd services..."
-
 cat > /etc/systemd/system/gpc-l2.service <<EOF
 [Unit]
-Description=GPC L2 Engine
+Description=GPC L2
 After=network.target
 
 [Service]
-WorkingDirectory=$GPC_ROOT
-ExecStart=$VENV/bin/python $GPC_ROOT/l2/l2_engine.py
+WorkingDirectory=$ROOT
+ExecStart=$VENV/bin/python $ROOT/l2/l2_engine.py
 Restart=always
 
 [Install]
@@ -607,8 +579,8 @@ Description=GPC Minute Worker
 After=network.target
 
 [Service]
-WorkingDirectory=$GPC_ROOT
-ExecStart=$VENV/bin/python $GPC_ROOT/workers/minute_worker.py
+WorkingDirectory=$ROOT
+ExecStart=$VENV/bin/python $ROOT/workers/minute_worker.py
 Restart=always
 
 [Install]
@@ -621,7 +593,7 @@ Description=GPC API
 After=network.target
 
 [Service]
-WorkingDirectory=$GPC_ROOT
+WorkingDirectory=$ROOT
 ExecStart=$VENV/bin/uvicorn backend.app:app --host 0.0.0.0 --port $API_PORT
 Restart=always
 
@@ -635,7 +607,7 @@ Description=GPC UI
 After=network.target
 
 [Service]
-WorkingDirectory=$GPC_ROOT/frontend
+WorkingDirectory=$ROOT/frontend
 ExecStart=$VENV/bin/streamlit run app.py --server.port $UI_PORT --server.address 0.0.0.0
 Restart=always
 
@@ -658,15 +630,15 @@ gpc-api \
 gpc-ui
 
 ############################################################
-# CLI
+# GPC COMMAND
 ############################################################
 
 cat > /usr/local/bin/gpc <<'EOF'
 #!/usr/bin/env bash
 
-echo "=============================="
-echo " GPC TERMINAL CONTROL PANEL"
-echo "=============================="
+echo "============================"
+echo " GPC CONTROL PANEL"
+echo "============================"
 
 echo "1. status"
 echo "2. restart"
@@ -680,6 +652,8 @@ case $x in
 
 1)
 systemctl status gpc-l2
+systemctl status gpc-api
+systemctl status gpc-ui
 ;;
 
 2)
@@ -704,40 +678,36 @@ EOF
 chmod +x /usr/local/bin/gpc
 
 ############################################################
+# FIREWALL
+############################################################
+
+ufw allow $NGINX_PORT/tcp || true
+
+############################################################
 # FINISH
 ############################################################
 
 IP=$(curl -s ipv4.ip.sb || true)
 
 echo
-echo "=================================================="
-echo " GPC INSTALL FINISHED"
-echo "=================================================="
+echo "================================================="
+echo " GPC2H3 INSTALL SUCCESS"
+echo "================================================="
 echo "URL:"
-echo "http://$IP:16666"
+echo "http://$IP:$NGINX_PORT"
 echo
-echo "ADMIN:"
+echo "USERNAME:"
 echo "$ADMIN_USER"
 echo
-echo "POSTGRES:"
-echo "$POSTGRES_USER"
-echo "$POSTGRES_PASS"
-echo
-echo "JWT:"
-echo "$JWT_SECRET"
-echo
-echo "ROOT:"
-echo "$GPC_ROOT"
+echo "PASSWORD:"
+echo "$ADMIN_PASS"
 echo
 echo "CLI:"
 echo "gpc"
-echo "=================================================="
+echo
+echo "ROOT:"
+echo "$ROOT"
 echo
 echo "BACKUP:"
 echo "tar zcf gpc_backup.tar.gz /opt/gpc"
-echo
-echo "SERVICES:"
-echo "systemctl status gpc-l2"
-echo "systemctl status gpc-api"
-echo "systemctl status gpc-ui"
-echo "=================================================="
+echo "================================================="
