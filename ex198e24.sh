@@ -1373,12 +1373,12 @@ net.ipv4.tcp_adv_win_scale = ${new_scale}
 net.ipv4.tcp_app_win = ${new_app}
 net.ipv4.tcp_moderate_rcvbuf = 1
 
-net.core.rmem_default = 99057
-net.core.wmem_default = 75536
-net.core.rmem_max = 21699928
-net.core.wmem_max = 21699928
-net.ipv4.tcp_rmem = 8192 99057 21699928
-net.ipv4.tcp_wmem = 8192 75536 21699928
+net.core.rmem_default = 990570
+net.core.wmem_default = 755360
+net.core.rmem_max = 216999289
+net.core.wmem_max = 216999289
+net.ipv4.tcp_rmem = 8192 990570 216999289
+net.ipv4.tcp_wmem = 8192 755360 216999289
 net.ipv4.udp_rmem_min = 4096
 net.ipv4.udp_wmem_min = 4096
 
