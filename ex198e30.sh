@@ -426,7 +426,7 @@ EOF
     if ping -c1 -W3 google.com >/dev/null 2>&1; then
         info "DNS 配置成功。"
     else
-        warn "DNS 解析失败，自动切换到国内公共 DNS..."
+        warn "DNS 解析失败 DNS..."
 
         cat > /etc/systemd/resolved.conf <<EOF
 [Resolve]
@@ -1772,16 +1772,26 @@ toggle_dnsmasq() {
 port=53
 listen-address=127.0.0.1
 bind-interfaces
+
 cache-size=10000
 min-cache-ttl=300
+neg-ttl=60
+
 strict-order
 
-server=208.67.222.222
-server=1.1.1.1
+server=208.97.222.222
+server=1.0.0.1
 server=8.8.8.8
 
 no-resolv
 no-poll
+
+domain-needed
+bogus-priv
+
+dns-forward-max=1024
+
+cache-rr=ANY
 EOF
         systemctl enable dnsmasq >/dev/null 2>&1 || true; systemctl restart dnsmasq >/dev/null 2>&1 || true; if [ ! -f /etc/resolv.conf.bak ]; then cp /etc/resolv.conf /etc/resolv.conf.bak 2>/dev/null || true; fi; rm -f /etc/resolv.conf 2>/dev/null || true; echo "nameserver 127.0.0.1" > /etc/resolv.conf; _safe_jq_write '.dns = {"servers":["127.0.0.1"], "queryStrategy":"UseIP"}'
     fi
