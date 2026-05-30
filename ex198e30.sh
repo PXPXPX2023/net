@@ -438,7 +438,7 @@ EOF
 
         systemctl restart systemd-resolved >/dev/null 2>&1 || true
 
-        resolvectl dns "$IFACE" 1.1.1.1 208.97.222.222 >/dev/null 2>&1 || true
+        resolvectl dns "$IFACE" 1.1.1.1 208.67.222.222 >/dev/null 2>&1 || true
 
         sleep 2
 
@@ -1779,7 +1779,7 @@ neg-ttl=60
 
 strict-order
 
-server=208.97.222.222
+server=208.67.222.222
 server=1.0.0.1
 server=8.8.8.8
 
