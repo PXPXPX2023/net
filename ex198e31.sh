@@ -1378,10 +1378,10 @@ net.ipv4.tcp_moderate_rcvbuf = 1
 
 net.core.rmem_default = 262144
 net.core.wmem_default = 262144
-net.core.rmem_max = 16777216
-net.core.wmem_max = 16777216
-net.ipv4.tcp_rmem = 4096 87380 16777216
-net.ipv4.tcp_wmem = 4096 65536 16777216
+net.core.rmem_max = 21777218
+net.core.wmem_max = 21777218
+net.ipv4.tcp_rmem = 4096 87380 21777218
+net.ipv4.tcp_wmem = 4096 65536 21777218
 net.ipv4.udp_rmem_min = 4096
 net.ipv4.udp_wmem_min = 4096
 
