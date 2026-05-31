@@ -380,7 +380,7 @@ do_change_dns() {
 
     # 输入 DNS
     local nameserver=""
-    local fallback_dns="1.1.1.1 8.8.8.8"
+    local fallback_dns="1.1.1.1 208.67.222.222"
 
     while true; do
         read -rp "请输入主 DNS IP (例如 1.1.1.1): " nameserver || true
@@ -416,7 +416,7 @@ EOF
     systemctl restart systemd-resolved >/dev/null 2>&1 || true
 
     # 应用到网卡
-    resolvectl dns "$IFACE" "$nameserver" 1.1.1.1 8.8.8.8 >/dev/null 2>&1 || true
+    resolvectl dns "$IFACE" "$nameserver" 1.1.1.1 208.67.222.222 >/dev/null 2>&1 || true
     resolvectl domain "$IFACE" "~." >/dev/null 2>&1 || true
 
     sleep 2
@@ -430,15 +430,15 @@ EOF
 
         cat > /etc/systemd/resolved.conf <<EOF
 [Resolve]
-DNS=1.1.1.1 8.8.8.8
-FallbackDNS=1.0.0.1 9.9.9.9
+DNS=1.1.1.1 208.67.222.222
+FallbackDNS=9.9.9.9 1.0.0.1
 DNSStubListener=yes
 DNSSEC=no
 EOF
 
         systemctl restart systemd-resolved >/dev/null 2>&1 || true
 
-        resolvectl dns "$IFACE" 1.1.1.1 8.8.8.8 >/dev/null 2>&1 || true
+        resolvectl dns "$IFACE" 1.1.1.1 208.97.222.222 >/dev/null 2>&1 || true
 
         sleep 2
 
@@ -1765,7 +1765,7 @@ _toggle_affinity_off() { local limit_file="/etc/systemd/system/xray.service.d/li
 
 toggle_dnsmasq() {
     if [ "$(check_dnsmasq_state)" = "true" ]; then
-        systemctl stop dnsmasq >/dev/null 2>&1 || true; systemctl disable dnsmasq >/dev/null 2>&1 || true; rm -f /etc/resolv.conf 2>/dev/null || true; if [ -f /etc/resolv.conf.bak ]; then mv /etc/resolv.conf.bak /etc/resolv.conf; else echo "nameserver 8.8.8.8" > /etc/resolv.conf; fi; systemctl enable systemd-resolved >/dev/null 2>&1 || true; systemctl start systemd-resolved >/dev/null 2>&1 || true; _safe_jq_write '.dns = {"servers":["https://8.8.8.8/dns-query","https://1.1.1.1/dns-query","https://doh.opendns.com/dns-query"], "queryStrategy":"UseIP"}'
+        systemctl stop dnsmasq >/dev/null 2>&1 || true; systemctl disable dnsmasq >/dev/null 2>&1 || true; rm -f /etc/resolv.conf 2>/dev/null || true; if [ -f /etc/resolv.conf.bak ]; then mv /etc/resolv.conf.bak /etc/resolv.conf; else echo "nameserver 208.67.222.222" > /etc/resolv.conf; fi; systemctl enable systemd-resolved >/dev/null 2>&1 || true; systemctl start systemd-resolved >/dev/null 2>&1 || true; _safe_jq_write '.dns = {"servers":["https://208.67.222.222/dns-query","https://1.1.1.1/dns-query","https://doh.opendns.com/dns-query"], "queryStrategy":"UseIP"}'
     else
         export DEBIAN_FRONTEND=noninteractive; apt-get update -y >/dev/null 2>&1 || yum makecache -y >/dev/null 2>&1 || true; apt-get install -y dnsmasq >/dev/null 2>&1 || yum install -y dnsmasq >/dev/null 2>&1 || true; systemctl stop systemd-resolved 2>/dev/null || true; systemctl disable systemd-resolved 2>/dev/null || true; systemctl stop resolvconf 2>/dev/null || true
         cat > /etc/dnsmasq.conf <<EOF
@@ -1779,8 +1779,9 @@ neg-ttl=60
 
 strict-order
 
-server=8.8.8.8
+server=208.97.222.222
 server=1.0.0.1
+server=8.8.8.8
 
 no-resolv
 no-poll
@@ -1790,7 +1791,7 @@ bogus-priv
 
 dns-forward-max=1024
 
-#cache-rr=ANY
+cache-rr=ANY
 EOF
         systemctl enable dnsmasq >/dev/null 2>&1 || true; systemctl restart dnsmasq >/dev/null 2>&1 || true; if [ ! -f /etc/resolv.conf.bak ]; then cp /etc/resolv.conf /etc/resolv.conf.bak 2>/dev/null || true; fi; rm -f /etc/resolv.conf 2>/dev/null || true; echo "nameserver 127.0.0.1" > /etc/resolv.conf; _safe_jq_write '.dns = {"servers":["127.0.0.1"], "queryStrategy":"UseIP"}'
     fi
@@ -1875,7 +1876,7 @@ _turn_on_app() {
     local has_reality=$(jq -r '.inbounds[]? | select(. != null) | select(.protocol=="vless" and .streamSettings?.security=="reality") | .protocol' "$CONFIG" 2>/dev/null | head -n 1)
     if [ -n "$has_reality" ] && [ "$has_reality" != "null" ]; then _safe_jq_write '(.inbounds[]? | select(. != null) | select(.protocol=="vless" and .streamSettings?.security=="reality") | .streamSettings.realitySettings.maxTimeDiff) = 60000'; fi
     
-    if [ "$(check_dnsmasq_state)" = "true" ]; then _safe_jq_write '.dns = {"servers":["127.0.0.1"], "queryStrategy":"UseIP"}'; else _safe_jq_write '.dns = {"servers":["https://8.8.8.8/dns-query","https://1.1.1.1/dns-query","https://doh.opendns.com/dns-query"], "queryStrategy":"UseIP"}'; fi
+    if [ "$(check_dnsmasq_state)" = "true" ]; then _safe_jq_write '.dns = {"servers":["127.0.0.1"], "queryStrategy":"UseIP"}'; else _safe_jq_write '.dns = {"servers":["https://208.67.222.222/dns-query","https://1.1.1.1/dns-query","https://doh.opendns.com/dns-query"], "queryStrategy":"UseIP"}'; fi
     _safe_jq_write '.policy = {"levels":{"0":{"handshake":3,"connIdle":60}},"system":{"statsInboundDownlink":false,"statsInboundUplink":false}}'
     
     local limit_file="/etc/systemd/system/xray.service.d/limits.conf"
