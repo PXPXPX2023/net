@@ -2416,7 +2416,7 @@ do_install() {
     install_update_dat; fix_xray_systemd_limits
 
     cat > "$CONFIG" <<EOF
-{ "log": { "loglevel": "warning" }, "routing": { "domainStrategy": "AsIs", "rules": [ { "outboundTag": "block", "_enabled": true, "protocol": ["bittorrent"] }, { "outboundTag": "block", "_enabled": true, "ip": ["geoip:cn"] }, { "outboundTag": "block", "_enabled": true, "domain": ["geosite:category-ads-all"] } ] }, "inbounds": [], "outbounds": [ { "protocol": "freedom", "tag": "direct", { "protocol": "blackhole", "tag": "block" } ] }
+{ "log": { "loglevel": "warning" }, "routing": { "domainStrategy": "AsIs", "rules": [ { "outboundTag": "block", "_enabled": true, "protocol": ["bittorrent"] }, { "outboundTag": "block", "_enabled": true, "ip": ["geoip:cn"] }, { "outboundTag": "block", "_enabled": true, "domain": ["geosite:cn", "geosite:category-ads-all"] } ] }, "inbounds": [], "outbounds": [ { "protocol": "freedom", "tag": "direct", "settings": {"domainStrategy": "AsIs"} }, { "protocol": "blackhole", "tag": "block" } ] }
 EOF
 
     if test "$proto_choice" = "1" || test "$proto_choice" = "3"; then
