@@ -1351,23 +1351,23 @@ do_perf_tuning() {
     info "配置系统高并发进程限制 (Limits)..."
     mkdir -p /etc/security/limits.d 2>/dev/null || true
     cat > /etc/security/limits.d/99-xray-limits.conf << 'EOF'
-root soft nofile 1000000
-root hard nofile 1000000
-root soft nproc 1000000
-root hard nproc 1000000
-root soft core 1000000
-root hard core 1000000
-root soft stack 1000000
-root hard stack 1000000
+root soft nofile 100000
+root hard nofile 100000
+root soft nproc 100000
+root hard nproc 100000
+root soft core 100000
+root hard core 100000
+root soft stack 100000
+root hard stack 100000
 
-* soft nofile 1000000
-* hard nofile 1000000
-* soft nproc 1000000
-* hard nproc 1000000
-* soft core 1000000
-* hard core 1000000
-* soft stack 1000000
-* hard stack 1000000
+* soft nofile 100000
+* hard nofile 100000
+* soft nproc 100000
+* hard nproc 100000
+* soft core 100000
+* hard core 100000
+* soft stack 100000
+* hard stack 100000
 EOF
 
     if ! grep -q "pam_limits.so" /etc/pam.d/common-session 2>/dev/null; then echo "session required pam_limits.so" >> /etc/pam.d/common-session; fi
@@ -1376,8 +1376,8 @@ EOF
     mkdir -p /etc/systemd/system.conf.d 2>/dev/null || true
     cat > /etc/systemd/system.conf.d/99-xray-limits.conf << 'EOF'
 [Manager]
-DefaultLimitNOFILE=1000000
-DefaultLimitNPROC=1000000
+DefaultLimitNOFILE=100000
+DefaultLimitNPROC=100000
 EOF
     systemctl daemon-reexec >/dev/null 2>&1 || true
 
