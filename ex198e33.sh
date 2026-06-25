@@ -490,7 +490,7 @@ EOF
         cat > /etc/systemd/resolved.conf <<EOF
 [Resolve]
 DNS=1.1.1.1 208.67.222.222
-FallbackDNS=9.9.9.9 1.0.0.1
+FallbackDNS=8.8.8.8 1.0.0.1
 DNSStubListener=yes
 DNSSEC=no
 EOF
@@ -1473,8 +1473,8 @@ net.core.rmem_default = 2990577
 net.core.wmem_default = 2955367
 net.core.rmem_max = 26699928
 net.core.wmem_max = 26699928
-net.ipv4.tcp_rmem = 8192 2990577 26699928
-net.ipv4.tcp_wmem = 8192 2955367 26699928
+net.ipv4.tcp_rmem = 4096 2990577 26699928
+net.ipv4.tcp_wmem = 4096 2955367 26699928
 net.ipv4.udp_rmem_min = 4096
 net.ipv4.udp_wmem_min = 4096
 
@@ -1849,9 +1849,8 @@ neg-ttl=60
 
 all-servers
 
-server=1.1.1.1
-server=208.67.222.222
 server=1.0.0.1
+server=208.67.222.222
 server=8.8.8.8
 
 no-resolv
