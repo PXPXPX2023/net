@@ -65496,39 +65496,35 @@ _e214_critical_preflight() {
 
 _e214_hot_update_preflight() {
     local owner="" fn c
-    test "$EUID" -eq 0 || { error 'E220热更新必须使用root。'; return 1; }
+    test "$EUID" -eq 0 || { error 'E244热更新必须使用root。'; return 1; }
     test -d /run/systemd/system || { error 'systemd未运行。'; return 1; }
     for c in bash systemctl jq curl ip ss tar install sha256sum cp awk sed grep \
         dirname mkdir mv cmp find sort readlink base64 paste tr chmod chown stat \
         sysctl mktemp flock xargs cat cut date head kill rm rmdir tail touch wc; do
         command -v "$c" >/dev/null 2>&1 || {
-            error "E220只读预检缺少命令：$c"
+            error "E244只读预检缺少命令：$c"
             return 1
         }
     done
     test -r "$SCRIPT_PATH" || { error "当前脚本不可读：$SCRIPT_PATH"; return 1; }
     bash -n "$SCRIPT_PATH" || return 1
-    test "$SCRIPT_VERSION" = 199e243 && test "$E214_VERSION" = 199e243 || return 1
+    _e244_release_binding_gate || return 1
     _e214_critical_preflight || return 1
     _e220_mss_preflight_readonly || return 1
     for fn in _e214_install_self _e140_system_snapshot _e140_system_restore \
         _e182_install_mode _e159_network_apply _e159_network_remove \
-        _e185_warp_health_check _e214_structure_audit _e220_structure_audit \
+        _e185_warp_health_check _e244_structure_audit \
         _e218_mss_consistency; do
-        declare -F "$fn" >/dev/null 2>&1 || { error "E220热更新缺少最终函数：$fn"; return 1; }
+        declare -F "$fn" >/dev/null 2>&1 || { error "E244热更新缺少最终函数：$fn"; return 1; }
     done
-    _e220_structure_audit >/dev/null || {
-        error 'E220发布结构/参数不变量门禁失败；热更新尚未开始。'
-        return 1
-    }
     owner=$(_e204_legacy_small_bbr_owner 2>/dev/null || true)
     if test -n "$owner"; then
-        error "检测到旧小BBR所有者：$owner。E220不会猜测旧版快照并代替旧版退出。"
-        error '请先由对应旧版脚本执行 --small-bbr-disable并确认恢复，再运行E220热更新。'
+        error "检测到旧小BBR所有者：$owner。E244不会猜测旧版快照并代替旧版退出。"
+        error '请先由对应旧版脚本执行 --small-bbr-disable并确认恢复，再运行E244热更新。'
         return 1
     fi
     if _e202_small_bbr_active; then
-        error '检测到当前E202兼容小BBR仍处于active。E220不会在唯一恢复快照之上覆盖热更新入口。'
+        error '检测到当前E202兼容小BBR仍处于active。E244不会在唯一恢复快照之上覆盖热更新入口。'
         error '请先用当前已安装的旧脚本执行：xrv --small-bbr-disable，确认恢复后再热更新。'
         return 1
     fi
@@ -71175,7 +71171,7 @@ _e242_auto_preflight() {
             return 1
         }
     fi
-    _e242_structure_audit >/dev/null || {
+    _e244_release_binding_gate || {
         error 'E244发布结构门禁失败，自动升级尚未开始。'; return 1;
     }
     _e242_non_mss_critical_preflight || return 1
@@ -71443,6 +71439,10 @@ _e242_auto_upgrade() (
     trap '_e242_auto_exit_guard $?' EXIT
     trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
     test "$EUID" -eq 0 || { error 'E244自动升级必须使用root。'; return 1; }
+    _e244_release_binding_gate || {
+        error 'E244最终发布绑定门禁失败；未进入恢复、快照或网络写入阶段。'
+        return 1
+    }
     _e242_prepare || return 1
     # Direct CLI entry points bypass the interactive `preflight` dispatcher.
     # Acquire (or reuse) the process-wide xrv lock here before any recovery or
@@ -72190,6 +72190,7 @@ _e242_auto_mock_self_test() (
     E242_INTERNAL_SELF_TEST=1
     E242_AUTO_LOCK_PATH="$d/auto.lock"
     E242_AUTO_LOG_PATH="$d/auto.log"
+    _e244_release_binding_gate() { echo release-gate >>"$order"; }
     _e242_prepare() { echo release-prepare >>"$order"; }
     _e118_runtime_init() { echo global-lock >>"$order"; E118_RUNTIME_READY=1; }
     _e214_prepare_tx() { echo prepare >>"$order"; }
@@ -72243,13 +72244,13 @@ _e242_auto_mock_self_test() (
     grep -Fq 'event=OK|stage=committed|rc=0' "$d/auto.log" || rc=1
     grep -Fq 'event=OK|stage=mss-outer-snapshot|rc=0' "$d/auto.log" || rc=1
     test "$(paste -sd, "$order")" = \
-      release-prepare,global-lock,prepare,prior-recovery,warp-marker-recovery,preflight,warp-plan,snapshot,warp-package-snapshot,mss-exact-snapshot,app-state-snapshot,state-baseline-sealed,warp-converge,state-warp-converged,capture,disable,app-state-restore,mss-converge-off,state-legacy-baseline-restored,raw-preflight,raw-hot,pbk-cache,state-hot-update,micro28,pbk-cache,state-micro28,save-profile,enable,state-small-bbr,mtu1350,state-mtu1350,verify,state-final,close || rc=1
+      release-gate,release-prepare,global-lock,prepare,prior-recovery,warp-marker-recovery,preflight,warp-plan,snapshot,warp-package-snapshot,mss-exact-snapshot,app-state-snapshot,state-baseline-sealed,warp-converge,state-warp-converged,capture,disable,app-state-restore,mss-converge-off,state-legacy-baseline-restored,raw-preflight,raw-hot,pbk-cache,state-hot-update,micro28,pbk-cache,state-micro28,save-profile,enable,state-small-bbr,mtu1350,state-mtu1350,verify,state-final,close || rc=1
 
     : >"$order"; bad_log="$d/bad-auto.log"
     ln -s /dev/null "$bad_log" || rc=1
     E242_AUTO_LOG_PATH="$bad_log"
     _e242_auto_upgrade 0 >/dev/null 2>&1 && rc=1 || true
-    test "$(paste -sd, "$order")" = release-prepare,global-lock || rc=1
+    test "$(paste -sd, "$order")" = release-gate,release-prepare,global-lock || rc=1
     E242_AUTO_LOG_PATH="$d/auto.log"
 
     : >"$order"; mock_owner=e202
@@ -72272,7 +72273,7 @@ _e242_auto_mock_self_test() (
     _e214_hot_update() { echo raw-hot >>"$order"; }
     _e242_auto_upgrade 0 >/dev/null 2>&1 || rc=1
     test "$(paste -sd, "$order")" = \
-      release-prepare,global-lock,prepare,prior-recovery,warp-marker-recovery,preflight,mss-recover,critical-preflight,warp-plan,snapshot,warp-package-snapshot,mss-exact-snapshot,app-state-snapshot,state-baseline-sealed,warp-converge,state-warp-converged,capture,disable,app-state-restore,mss-converge-off,state-legacy-baseline-restored,raw-preflight,raw-hot,pbk-cache,state-hot-update,micro28,pbk-cache,state-micro28,save-profile,enable,state-small-bbr,mtu1350,state-mtu1350,verify,state-final,close \
+      release-gate,release-prepare,global-lock,prepare,prior-recovery,warp-marker-recovery,preflight,mss-recover,critical-preflight,warp-plan,snapshot,warp-package-snapshot,mss-exact-snapshot,app-state-snapshot,state-baseline-sealed,warp-converge,state-warp-converged,capture,disable,app-state-restore,mss-converge-off,state-legacy-baseline-restored,raw-preflight,raw-hot,pbk-cache,state-hot-update,micro28,pbk-cache,state-micro28,save-profile,enable,state-small-bbr,mtu1350,state-mtu1350,verify,state-final,close \
       || rc=1
     return "$rc"
 )
@@ -73609,6 +73610,26 @@ _e243_cli_help_coverage() {
 # V199e244 PREVIOUS-AUTO RECOVERY DOMAIN GATE
 #==============================================================================
 
+_e244_release_binding_gate() {
+    local fn=""
+    bash -n "$SCRIPT_PATH" >/dev/null 2>&1 || return 1
+    test "$SCRIPT_VERSION" = 199e244 \
+      && test "$E214_VERSION" = 199e244 \
+      && test "$E220_VERSION" = 199e244 \
+      && test "$E242_VERSION" = 199e244 \
+      && test "$E243_VERSION" = 199e244 \
+      && test "$E244_VERSION" = 199e244 || return 1
+    for fn in _e242_auto_upgrade _e242_restore_outer _e214_hot_update \
+      _e214_hot_update_preflight _e214_install_self _e214_hot_verify \
+      _e140_system_snapshot _e140_system_restore _e159_apply_micro_28 \
+      _e202_small_bbr_enable _e242_mtu_set_1350_outer \
+      _e242_reality_cache_reconcile _e242_previous_auto_marker_snapshot \
+      _e244_hot_restore_readback; do
+        declare -F "$fn" >/dev/null 2>&1 || return 1
+    done
+    _e244_structure_audit >/dev/null
+}
+
 _e244_recovery_diag() {
     local file="${1:-}" domain="${2:-unknown}" rc="${3:-1}" detail="${4:-}"
     test -n "$file" || return 1
@@ -73813,6 +73834,12 @@ _e244_hot_restore_readback() {
     return 1
 }
 
+# From this point onward every hot-update rollback, including the inherited
+# E214 inner transaction, uses the same E244 six-domain readback.  Without
+# this final binding an inner hot-update failure could still fall back to the
+# old single aggregate rc and recreate the exact false-negative fixed here.
+_e214_hot_restore_readback() { _e244_hot_restore_readback "$@"; }
+
 if declare -F _e242_restore_outer >/dev/null 2>&1; then
     eval "$(declare -f _e242_restore_outer \
       | sed '1s/_e242_restore_outer/_e244_restore_outer_base/' \
@@ -73870,14 +73897,40 @@ _e244_marker_mock_self_test() (
     return "$rc"
 )
 
+_e244_live_preflight_binding_mock_self_test() (
+    local rc=0
+    # If the production preflight accidentally calls the inherited audit,
+    # this fixture must fail.  E244's own final gate remains real/unmocked.
+    _e242_structure_audit() { return 97; }
+    _e220_structure_audit() { return 98; }
+    _e242_non_mss_critical_preflight() { return 0; }
+    _e242_mss_plan_readonly() { printf 'steady-off\n'; }
+    _e214_mtu_any_state() { return 1; }
+    _e214_mtu_default_iface() { printf 'ens3\n'; }
+    _e214_mtu_iface_candidate() { test "${1:-}" = ens3; }
+    _e242_inactive_small_profile() { return 0; }
+    _e242_auto_preflight "" 199e242 >/dev/null 2>&1 || rc=1
+    _e244_release_binding_gate >/dev/null 2>&1 || rc=1
+    return "$rc"
+)
+
 _e244_structure_audit() {
     local rc=0 auto="" menu="" marker="" restore="" installer="" paths=""
+    local auto_preflight="" hot_preflight="" hot_restore="" release_gate=""
+    local gate_line="" prepare_line="" recover_line=""
     auto=$(declare -f _e242_auto_upgrade 2>/dev/null || true)
     menu=$(declare -f _e242_auto_upgrade_menu 2>/dev/null || true)
     marker=$(declare -f _e242_previous_auto_marker_snapshot 2>/dev/null || true)
     restore=$(declare -f _e244_restore_outer_base 2>/dev/null || true)
     installer=$(declare -f _e214_install_self 2>/dev/null || true)
     paths=$(declare -f _e138_system_paths 2>/dev/null || true)
+    auto_preflight=$(declare -f _e242_auto_preflight 2>/dev/null || true)
+    hot_preflight=$(declare -f _e214_hot_update_preflight 2>/dev/null || true)
+    hot_restore=$(declare -f _e214_hot_restore_readback 2>/dev/null || true)
+    release_gate=$(declare -f _e244_release_binding_gate 2>/dev/null || true)
+    gate_line=$(grep -n '_e244_release_binding_gate' <<<"$auto" | head -n1 | cut -d: -f1 || true)
+    prepare_line=$(grep -n '_e242_prepare' <<<"$auto" | head -n1 | cut -d: -f1 || true)
+    recover_line=$(grep -n '_e242_recover_previous_failed_auto' <<<"$auto" | head -n1 | cut -d: -f1 || true)
     echo 'V199e244 release structure audit:'
     if test "$SCRIPT_VERSION" = 199e244 && test "$E214_VERSION" = 199e244 \
       && test "$E220_VERSION" = 199e244 && test "$E242_VERSION" = 199e244 \
@@ -73918,6 +73971,18 @@ _e244_structure_audit() {
       && grep -q 'E242_LEGACY_E242_SELF_PATH' <<<"$installer$paths" \
       && echo '  [PASS] E243/E242及更早普通脚本入口继续安装并读回' \
       || { echo '  [FAIL] 历史脚本入口兼容'; rc=1; }
+    grep -q '_e244_release_binding_gate' <<<"$auto_preflight" \
+      && ! grep -q '_e242_structure_audit' <<<"$auto_preflight" \
+      && grep -q '_e244_release_binding_gate' <<<"$hot_preflight" \
+      && ! grep -q '_e220_structure_audit' <<<"$hot_preflight" \
+      && grep -q 'SCRIPT_VERSION.*199e244' <<<"$release_gate" \
+      && grep -q 'E244_VERSION.*199e244' <<<"$release_gate" \
+      && grep -q '_e244_structure_audit' <<<"$release_gate" \
+      && grep -q '_e244_hot_restore_readback' <<<"$hot_restore" \
+      && [[ "$gate_line" =~ ^[0-9]+$ && "$prepare_line" =~ ^[0-9]+$ && "$recover_line" =~ ^[0-9]+$ ]] \
+      && ((gate_line < prepare_line && gate_line < recover_line)) \
+      && echo '  [PASS] 一键预检、热更新预检和内部回滚均绑定E244最终门禁' \
+      || { echo '  [FAIL] 实际调用链仍残留旧版结构门禁'; rc=1; }
     return "$rc"
 }
 
@@ -73941,6 +74006,9 @@ _e244_self_test() {
     _e244_marker_mock_self_test \
       && echo '  [PASS] E242/E243/E244严重标记精确路径fixture' \
       || { echo '  [FAIL] 严重标记fixture'; rc=1; }
+    _e244_live_preflight_binding_mock_self_test \
+      && echo '  [PASS] 安装版199e242进入E244真实预检，不再调用旧结构门禁' \
+      || { echo '  [FAIL] E244真实预检最终绑定fixture'; rc=1; }
     for fn in "${inherited_fixtures[@]}"; do
         if "$fn" >/dev/null 2>&1; then
             echo "  [PASS] 兼容回归：$fn"
